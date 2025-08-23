@@ -1,4 +1,4 @@
-import { env } from "@/env.mjs";
+// Using environment variables from process.env
 
 export type SiteConfig = typeof siteConfig;
 
@@ -14,7 +14,7 @@ export const siteConfig = {
 };
 
 export const getURL = () => {
-  let url = env.NEXT_PUBLIC_APP_URL || "http://localhost:3000/";
+  let url = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000/";
   // Make sure to include `https://` when not localhost.
   url = url.includes("http") ? url : `https://${url}`;
   // Make sure to include a trailing `/`.

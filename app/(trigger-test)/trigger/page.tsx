@@ -47,7 +47,7 @@ export default function TriggerTestPage() {
 
   return (
     <div className="container mx-auto py-8">
-      <h1 className="text-2xl font-bold mb-6">Trigger.dev テスト</h1>
+      <h1 className="mb-6 text-2xl font-bold">Trigger.dev テスト</h1>
 
       <div className="grid gap-6">
         <Card>
