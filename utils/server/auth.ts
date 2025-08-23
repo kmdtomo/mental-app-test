@@ -19,7 +19,7 @@ export const handleAuthValidation = async () => {
   }
 };
 
-// ログインしていた場合、/dashboard にリダイレクトする
+// ログインしていた場合、/voice-diary にリダイレクトする
 export const handleAuthRedirect = async () => {
   const cookieStore = cookies();
   const supabase = createClient(cookieStore);
@@ -27,7 +27,7 @@ export const handleAuthRedirect = async () => {
   try {
     const { data, error } = await supabase.auth.getUser();
     if (!error && data.user) {
-      redirect("/dashboard");
+      redirect("/voice-diary");
     }
   } catch (e) {
     console.error(e);

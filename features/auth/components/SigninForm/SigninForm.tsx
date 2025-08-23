@@ -30,7 +30,7 @@ export function SigninForm({ className, ...props }: UserAuthFormProps) {
           title: "成功",
           description: "ログインに成功しました",
         });
-        redirect("/dashboard");
+        redirect("/voice-diary");
       } else {
         toast({
           title: "エラー",
