@@ -16,7 +16,7 @@ export async function uploadAudio(
   });
 
   const formData = new FormData();
-  formData.append('audio', audioBlob, `recording_${turnNumber}.webm`);
+  formData.append('audio', audioBlob, `recording_${turnNumber}.wav`);
   formData.append('turnNumber', turnNumber.toString());
   if (dialogueId) {
     formData.append('dialogueId', dialogueId);
@@ -25,6 +25,7 @@ export async function uploadAudio(
   const response = await fetch('/api/upload-audio', {
     method: 'POST',
     body: formData,
+    credentials: 'include',
   });
 
   if (!response.ok) {

@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
 
     // Create unique filename
     const timestamp = Date.now();
-    const fileName = `${user.id}/${timestamp}_${turnNumber}.webm`; // Will be webm from browser
+    const fileName = `${user.id}/${timestamp}_${turnNumber}.wav`; // WAV format
     console.log('Saving as:', fileName);
 
     // Upload to Supabase Storage

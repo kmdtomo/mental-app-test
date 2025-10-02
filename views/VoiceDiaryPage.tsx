@@ -33,6 +33,13 @@ export function VoiceDiaryPage({ user }: VoiceDiaryPageProps) {
     whisperDuration: number; // seconds
     claude: { input: number; output: number; total: number };
   } | null>(null);
+  const [emotionResult, setEmotionResult] = useState<{
+    file: string;
+    ang: number;
+    hap: number;
+    sad: number;
+    emo: string;
+  } | null>(null);
 
   const handleRecordingComplete = async (blob: Blob, duration: number) => {
     console.log('=== Recording Complete ===');
@@ -51,31 +58,57 @@ export function VoiceDiaryPage({ user }: VoiceDiaryPageProps) {
       const uploadResult = await uploadAudio(blob);
       console.log('Upload result:', uploadResult);
       
-      // 2. Call Whisper API
-      console.log('Step 2: Calling Whisper API...');
-      const whisperResponse = await fetch('/api/whisper', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          recordingId: uploadResult.recordingId,
-          filePath: uploadResult.filePath,
-          duration: duration,
+      // 2. Call Whisper API and Emotion Analysis API in parallel
+      console.log('Step 2: Calling Whisper API and Emotion Analysis API in parallel...');
+      const [whisperResponse, emotionResponse] = await Promise.all([
+        // Whisper API
+        fetch('/api/whisper', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            recordingId: uploadResult.recordingId,
+            filePath: uploadResult.filePath,
+            duration: duration,
+          }),
         }),
-      });
+        // Emotion Analysis API
+        fetch('/api/analyze-emotion', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            recordingId: uploadResult.recordingId,
+            filePath: uploadResult.filePath,
+          }),
+        })
+      ]);
       
       if (!whisperResponse.ok) {
         throw new Error('Whisper API failed');
+      }
+      if (!emotionResponse.ok) {
+        console.error('Emotion API failed:', await emotionResponse.text());
+        // Continue even if emotion analysis fails
       }
       
       const whisperData = await whisperResponse.json();
       console.log('Whisper result:', whisperData);
       setTranscription(whisperData.originalText);
       
+      // Set emotion result if successful
+      if (emotionResponse.ok) {
+        const emotionData = await emotionResponse.json();
+        console.log('Emotion result:', emotionData);
+        setEmotionResult(emotionData.emotion);
+      }
+      
       // 3. Call Claude 3.5 Sonnet for formatting
       console.log('Step 3: Calling Claude 3.5 Sonnet...');
       const formatResponse = await fetch('/api/format-text', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           transcriptionId: whisperData.transcriptionId,
           originalText: whisperData.originalText,
@@ -159,6 +192,38 @@ export function VoiceDiaryPage({ user }: VoiceDiaryPageProps) {
                     )}
                   </div>
                 </div>
+
+                {/* Emotion Analysis Result */}
+                {emotionResult && (
+                  <div className="mt-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="px-2 py-0.5 rounded-full text-xs bg-purple-500/10 text-purple-600">感情分析</span>
+                      <h3 className="font-semibold">感情分析結果</h3>
+                    </div>
+                    <div className="p-4 rounded-xl bg-muted inner-soft">
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-3 gap-4 text-sm">
+                          <div>
+                            <span className="text-muted-foreground">ang (怒り):</span>
+                            <p className="font-mono text-lg">{emotionResult.ang.toFixed(4)}</p>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">hap (喜び):</span>
+                            <p className="font-mono text-lg">{emotionResult.hap.toFixed(4)}</p>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">sad (悲しみ):</span>
+                            <p className="font-mono text-lg">{emotionResult.sad.toFixed(4)}</p>
+                          </div>
+                        </div>
+                        <div className="pt-2 mt-2 border-t">
+                          <span className="text-muted-foreground">判定結果 (emo):</span>
+                          <p className="font-semibold text-lg">{emotionResult.emo}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {recordingBlob && (
                   <div className="pt-4 border-t">

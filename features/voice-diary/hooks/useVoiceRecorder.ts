@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
-import { Mp3Recorder, formatDuration } from '@/lib/mediaRecorder/mp3Recorder';
+import { WavRecorder, formatDuration } from '@/lib/mediaRecorder/wavRecorder';
 
 export interface UseVoiceRecorderOptions {
   maxDuration?: number;
@@ -15,13 +15,13 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
   const [duration, setDuration] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
-  const recorderRef = useRef<Mp3Recorder | null>(null);
+  const recorderRef = useRef<WavRecorder | null>(null);
 
   const startRecording = useCallback(async () => {
     try {
       setError(null);
       setIsStarting(true);
-      const recorder = new Mp3Recorder({
+      const recorder = new WavRecorder({
         maxDuration: options.maxDuration || 60000, // Default 1 minute
         onProgress: (duration) => {
           setDuration(duration);
