@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>WAV Recorder Debug</title>
+</head>
+<body>
+    <h1>WAV録音デバッグページ</h1>
+    <p>ブラウザのコンソール（F12）を開いて、以下のステップを確認してください：</p>
+    
+    <h2>確認事項：</h2>
+    <ol>
+        <li>録音開始ボタンを押す</li>
+        <li>マイクの許可ダイアログが表示されるか</li>
+        <li>コンソールに以下のメッセージが順番に表示されるか：
+            <ul>
+                <li>"Starting recording..."</li>
+                <li>"WAV encoder initialized successfully"</li>
+                <li>"Requesting microphone access..."</li>
+                <li>"Microphone access granted"</li>
+                <li>"Using mime type: audio/wav"</li>
+                <li>"Recording started"</li>
+            </ul>
+        </li>
+    </ol>
+    
+    <h2>よくある問題：</h2>
+    <ul>
+        <li><strong>マイク許可が拒否されている</strong>：ブラウザの設定でマイクアクセスを許可</li>
+        <li><strong>HTTPS接続でない</strong>：localhost以外ではHTTPS必須</li>
+        <li><strong>extendable-media-recorderのロードエラー</strong>：npm installが必要</li>
+    </ul>
+    
+    <h2>緊急対処法：</h2>
+    <p>WAVが動作しない場合、一時的にWebMに戻すことも可能です。</p>
+</body>
+</html>

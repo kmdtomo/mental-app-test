@@ -53,7 +53,8 @@ export async function POST(request: NextRequest) {
       response_format: 'text',
     });
 
-    console.log('Transcription completed:', transcription.text.substring(0, 100) + '...');
+    const transcriptionText = transcription as unknown as string;
+    console.log('Transcription completed:', transcriptionText.substring(0, 100) + '...');
 
     // Save to transcriptions table
     const { data: transcriptionRecord, error: dbError } = await supabase
@@ -61,7 +62,7 @@ export async function POST(request: NextRequest) {
       .insert({
         user_id: user.id,
         recording_id: recordingId,
-        original_text: transcription.text,
+        original_text: transcriptionText,
         formatted_text: '', // Will be filled by Claude later
       })
       .select()
@@ -80,7 +81,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       transcriptionId: transcriptionRecord.id,
-      originalText: transcription.text,
+      originalText: transcriptionText,
       whisperDuration: durationInSeconds,
     });
   } catch (error) {

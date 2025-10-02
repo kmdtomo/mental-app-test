@@ -5,8 +5,7 @@ export const stripe = new Stripe(
   {
     // https://github.com/stripe/stripe-node#configuration
     // https://stripe.com/docs/api/versioning
-    // @ts-ignore
-    apiVersion: null,
+    apiVersion: "2024-04-10",
     // Register this as an official Stripe plugin.
     // https://stripe.com/docs/building-plugins#setappinfo
     appInfo: {
