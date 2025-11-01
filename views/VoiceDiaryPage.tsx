@@ -15,6 +15,84 @@ import {
   CLAUDE_SONNET_OUTPUT_PER_M_TOKENS_USD,
 } from '@/lib/pricing';
 
+// VAD値から感情を推定する関数（実データに基づく閾値）
+function vadToEmotion(arousal: number, valence: number, dominance: number): string {
+  // 実データの範囲: arousal(3.4-4.6), valence(3.6-4.5), dominance(3.4-4.5)
+  // 中央値を基準とした相対的な判定
+
+  const arousalMid = 4.0;
+  const valenceMid = 4.0;
+  const dominanceMid = 4.0;
+
+  const arousalHigh = arousal > arousalMid;
+  const valencHigh = valence > valenceMid;
+  const dominanceHigh = dominance > dominanceMid;
+
+  // より細かい閾値設定
+  const arousalVeryHigh = arousal > 4.3;
+  const arousalVeryLow = arousal < 3.7;
+  const valenceVeryHigh = valence > 4.3;
+  const valenceVeryLow = valence < 3.8;
+
+  // 感情マッピング（優先度順）
+  // 1. 高覚醒 + 高快度 = 興奮/幸せ
+  if (arousalVeryHigh && valenceVeryHigh) return 'excited';
+  if (arousalHigh && valencHigh) return 'happy';
+
+  // 2. 高覚醒 + 低快度 = ストレス/怒り
+  if (arousalVeryHigh && valenceVeryLow) return 'angry';
+  if (arousalHigh && !valencHigh) return 'stressed';
+
+  // 3. 低覚醒 + 高快度 = リラックス/穏やか
+  if (arousalVeryLow && valencHigh) return 'calm';
+  if (!arousalHigh && valenceVeryHigh) return 'relaxed';
+
+  // 4. 低覚醒 + 低快度 = 疲労/悲しみ
+  if (arousalVeryLow && valenceVeryLow) return 'sad';
+  if (!arousalHigh && valenceVeryLow) return 'tired';
+
+  // 5. 中間値 = 中立
+  if (!arousalVeryHigh && !arousalVeryLow && !valenceVeryHigh && !valenceVeryLow) {
+    return 'neutral';
+  }
+
+  // デフォルト：快度で判定
+  if (valencHigh) return 'happy';
+  if (valenceVeryLow) return 'sad';
+
+  return 'neutral';
+}
+
+function getEmotionEmoji(emotion: string): string {
+  const emojiMap: { [key: string]: string } = {
+    'happy': '😊',
+    'sad': '😢',
+    'angry': '😠',
+    'calm': '😌',
+    'neutral': '😐',
+    'excited': '🤩',
+    'relaxed': '😎',
+    'stressed': '😰',
+    'tired': '😴'
+  };
+  return emojiMap[emotion] || '😐';
+}
+
+function getEmotionLabel(emotion: string): string {
+  const labelMap: { [key: string]: string } = {
+    'happy': '幸せ',
+    'sad': '悲しみ',
+    'angry': '怒り',
+    'calm': '穏やか',
+    'neutral': '中立',
+    'excited': '興奮',
+    'relaxed': 'リラックス',
+    'stressed': 'ストレス',
+    'tired': '疲労'
+  };
+  return labelMap[emotion] || '中立';
+}
+
 interface VoiceDiaryPageProps {
   user?: {
     id: string;
@@ -35,10 +113,21 @@ export function VoiceDiaryPage({ user }: VoiceDiaryPageProps) {
   } | null>(null);
   const [emotionResult, setEmotionResult] = useState<{
     file: string;
-    ang: number;
-    hap: number;
-    sad: number;
-    emo: string;
+    segments: Array<{
+      segment_id: number;
+      start: number;
+      end: number;
+      duration: number;
+      arousal: number;
+      valence: number;
+      dominance: number;
+    }>;
+    summary: {
+      total_segments: number;
+      avg_arousal: number;
+      avg_valence: number;
+      avg_dominance: number;
+    };
   } | null>(null);
 
   const handleRecordingComplete = async (blob: Blob, duration: number) => {
@@ -102,8 +191,9 @@ export function VoiceDiaryPage({ user }: VoiceDiaryPageProps) {
         console.log('Emotion result:', emotionData);
         setEmotionResult(emotionData.emotion);
       }
-      
-      // 3. Call Claude 3.5 Sonnet for formatting
+
+      // 3. Call Claude 3.5 Sonnet for formatting (コメントアウト)
+      /*
       console.log('Step 3: Calling Claude 3.5 Sonnet...');
       const formatResponse = await fetch('/api/format-text', {
         method: 'POST',
@@ -114,19 +204,28 @@ export function VoiceDiaryPage({ user }: VoiceDiaryPageProps) {
           originalText: whisperData.originalText,
         }),
       });
-      
+
       if (!formatResponse.ok) {
         throw new Error('Format API failed');
       }
-      
+
       const formatData = await formatResponse.json();
       console.log('Format result:', formatData);
       setFormattedText(formatData.formattedText);
-      
+
       // Set token usage
       setTokenUsage({
         whisperDuration: duration, // Use the actual recording duration
         claude: formatData.claudeTokens || { input: 0, output: 0, total: 0 }
+      });
+      */
+
+      // Claude整形をスキップ（一時的にコメントアウト）
+      console.log('Step 3: Claude formatting skipped (commented out)');
+      setFormattedText(whisperData.originalText); // Whisperの結果をそのまま使用
+      setTokenUsage({
+        whisperDuration: duration,
+        claude: { input: 0, output: 0, total: 0 }
       });
       
       console.log('=== Processing Complete ===');
@@ -200,28 +299,96 @@ export function VoiceDiaryPage({ user }: VoiceDiaryPageProps) {
                       <span className="px-2 py-0.5 rounded-full text-xs bg-purple-500/10 text-purple-600">感情分析</span>
                       <h3 className="font-semibold">感情分析結果</h3>
                     </div>
-                    <div className="p-4 rounded-xl bg-muted inner-soft">
-                      <div className="space-y-2">
-                        <div className="grid grid-cols-3 gap-4 text-sm">
-                          <div>
-                            <span className="text-muted-foreground">ang (怒り):</span>
-                            <p className="font-mono text-lg">{emotionResult.ang.toFixed(4)}</p>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">hap (喜び):</span>
-                            <p className="font-mono text-lg">{emotionResult.hap.toFixed(4)}</p>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">sad (悲しみ):</span>
-                            <p className="font-mono text-lg">{emotionResult.sad.toFixed(4)}</p>
-                          </div>
-                        </div>
-                        <div className="pt-2 mt-2 border-t">
-                          <span className="text-muted-foreground">判定結果 (emo):</span>
-                          <p className="font-semibold text-lg">{emotionResult.emo}</p>
-                        </div>
+
+                    {/* デバッグ用：データ構造を確認 */}
+                    {process.env.NODE_ENV === 'development' && (
+                      <div className="mb-4 p-2 bg-gray-100 dark:bg-gray-800 rounded text-xs overflow-auto">
+                        <pre>{JSON.stringify(emotionResult, null, 2)}</pre>
                       </div>
-                    </div>
+                    )}
+
+                    {/* 総評 */}
+                    {emotionResult.summary && (
+                      <div className="p-4 rounded-xl bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 mb-4">
+                        {(() => {
+                          const avgArousal = emotionResult.summary.avg_arousal ?? 0;
+                          const avgValence = emotionResult.summary.avg_valence ?? 0;
+                          const avgDominance = emotionResult.summary.avg_dominance ?? 0;
+                          const dominantEmotion = vadToEmotion(avgArousal, avgValence, avgDominance);
+
+                          return (
+                            <>
+                              <div className="flex items-center justify-between mb-3">
+                                <h4 className="font-semibold text-lg">総評</h4>
+                                <span className="px-3 py-1 rounded-full text-sm font-semibold bg-white/60 dark:bg-black/20">
+                                  {getEmotionEmoji(dominantEmotion)} {getEmotionLabel(dominantEmotion)}
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-3 gap-3 text-sm mb-3">
+                                <div className="text-center p-2 rounded-lg bg-white/50 dark:bg-black/10">
+                                  <span className="text-muted-foreground block text-xs">覚醒度</span>
+                                  <p className="font-mono text-lg font-semibold">{avgArousal.toFixed(3)}</p>
+                                </div>
+                                <div className="text-center p-2 rounded-lg bg-white/50 dark:bg-black/10">
+                                  <span className="text-muted-foreground block text-xs">快度</span>
+                                  <p className="font-mono text-lg font-semibold">{avgValence.toFixed(3)}</p>
+                                </div>
+                                <div className="text-center p-2 rounded-lg bg-white/50 dark:bg-black/10">
+                                  <span className="text-muted-foreground block text-xs">優位性</span>
+                                  <p className="font-mono text-lg font-semibold">{avgDominance.toFixed(3)}</p>
+                                </div>
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                検出された発話区間: {emotionResult.summary.total_segments ?? 0}個
+                              </div>
+                            </>
+                          );
+                        })()}
+                      </div>
+                    )}
+
+                    {/* 各セグメントの詳細 */}
+                    {emotionResult.segments && emotionResult.segments.length > 0 && (
+                      <div className="space-y-3">
+                        <h4 className="font-semibold text-sm text-muted-foreground">発話区間ごとの分析</h4>
+                        {emotionResult.segments.map((segment) => {
+                          const arousal = segment.arousal ?? 0;
+                          const valence = segment.valence ?? 0;
+                          const dominance = segment.dominance ?? 0;
+                          const segmentEmotion = vadToEmotion(arousal, valence, dominance);
+
+                          return (
+                            <div
+                              key={segment.segment_id}
+                              className="p-3 rounded-lg bg-muted inner-soft"
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs font-semibold text-muted-foreground">
+                                  区間 {segment.segment_id}: {(segment.start ?? 0).toFixed(1)}秒 - {(segment.end ?? 0).toFixed(1)}秒 ({(segment.duration ?? 0).toFixed(1)}秒)
+                                </span>
+                                <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-primary/10 text-primary">
+                                  {getEmotionEmoji(segmentEmotion)} {getEmotionLabel(segmentEmotion)}
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-3 gap-2 text-xs">
+                                <div>
+                                  <span className="text-muted-foreground">覚醒度:</span>
+                                  <p className="font-mono">{arousal.toFixed(3)}</p>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">快度:</span>
+                                  <p className="font-mono">{valence.toFixed(3)}</p>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">優位性:</span>
+                                  <p className="font-mono">{dominance.toFixed(3)}</p>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
 

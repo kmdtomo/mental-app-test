@@ -5,6 +5,8 @@ import OpenAI from 'openai';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
+  timeout: 60000, // 60秒タイムアウト
+  maxRetries: 0, // 自前でリトライするので0に設定
 });
 
 export async function POST(request: NextRequest) {
@@ -44,14 +46,35 @@ export async function POST(request: NextRequest) {
     // Convert Blob to File for OpenAI
     const audioFile = new File([fileData], 'audio.webm', { type: 'audio/webm' });
 
-    // Call Whisper API
+    // Call Whisper API with retry logic
     console.log('Calling Whisper API...');
-    const transcription = await openai.audio.transcriptions.create({
-      file: audioFile,
-      model: 'whisper-1',
-      language: 'ja', // Japanese
-      response_format: 'text',
-    });
+    let transcription;
+    let retryCount = 0;
+    const maxRetries = 3;
+
+    while (retryCount < maxRetries) {
+      try {
+        transcription = await openai.audio.transcriptions.create({
+          file: audioFile,
+          model: 'whisper-1',
+          language: 'ja', // Japanese
+          response_format: 'text',
+        });
+        break; // Success, exit retry loop
+      } catch (error) {
+        retryCount++;
+        console.error(`Whisper API attempt ${retryCount} failed:`, error);
+
+        if (retryCount >= maxRetries) {
+          throw error; // Give up after max retries
+        }
+
+        // Wait before retrying (exponential backoff)
+        const waitTime = Math.min(1000 * Math.pow(2, retryCount), 10000);
+        console.log(`Retrying in ${waitTime}ms...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+    }
 
     const transcriptionText = transcription as unknown as string;
     console.log('Transcription completed:', transcriptionText.substring(0, 100) + '...');
