@@ -79,31 +79,59 @@ export async function POST(request: NextRequest) {
     const transcriptionText = transcription as unknown as string;
     console.log('Transcription completed:', transcriptionText.substring(0, 100) + '...');
 
-    // Save to transcriptions table
-    const { data: transcriptionRecord, error: dbError } = await supabase
-      .from('transcriptions')
-      .insert({
-        user_id: user.id,
-        recording_id: recordingId,
-        original_text: transcriptionText,
-        formatted_text: '', // Will be filled by Claude later
-      })
-      .select()
-      .single();
+    // Save to dialogue_turns table (ユーザー発言として保存)
+    try {
+      const { getNextOrderIndex } = await import('@/lib/db/dialogue');
+      const { updateDailySummaryText } = await import('@/lib/db/dailySummary');
 
-    if (dbError) {
-      console.error('Database error:', dbError);
-      return NextResponse.json({ error: dbError.message }, { status: 500 });
+      const date = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+      console.log('Getting next order index for date:', date);
+
+      const orderIndex = await getNextOrderIndex(user.id, date);
+      console.log('Order index:', orderIndex);
+
+      const { data: dialogueTurn, error: dbError } = await supabase
+        .from('dialogue_turns')
+        .insert({
+          user_id: user.id,
+          date: date,
+          role: 'user',
+          content: transcriptionText,
+          input_type: 'voice',
+          recording_id: recordingId,
+          order_index: orderIndex
+        })
+        .select()
+        .single();
+
+      if (dbError) {
+        console.error('Database error saving dialogue turn:', dbError);
+        throw new Error(`DB Error: ${dbError.message}`);
+      }
+
+      console.log('Dialogue turn saved:', dialogueTurn.id);
+
+      // daily_summariesのtranscription_textを更新
+      console.log('Updating daily summary text...');
+      await updateDailySummaryText(user.id, date);
+      console.log('Daily summary text updated');
+
+    } catch (dbSaveError) {
+      console.error('Error in dialogue_turns save process:', dbSaveError);
+      // エラーログを詳細に出力
+      if (dbSaveError instanceof Error) {
+        console.error('Error name:', dbSaveError.name);
+        console.error('Error message:', dbSaveError.message);
+        console.error('Error stack:', dbSaveError.stack);
+      }
+      // 保存エラーでも文字起こし結果は返す
     }
-
-    console.log('Transcription saved:', transcriptionRecord.id);
 
     // Use the actual duration if provided, otherwise estimate from file size
     const durationInSeconds = duration || Math.ceil(fileData.size / (128 * 1024 / 8));
-    
+
     return NextResponse.json({
       success: true,
-      transcriptionId: transcriptionRecord.id,
       originalText: transcriptionText,
       whisperDuration: durationInSeconds,
     });
