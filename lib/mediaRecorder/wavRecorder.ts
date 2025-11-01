@@ -52,14 +52,14 @@ export class WavRecorder {
 
       // Get microphone access
       console.log('🎤 WavRecorder: Requesting microphone access...');
-      this.stream = await navigator.mediaDevices.getUserMedia({ 
+      this.stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
-          sampleRate: 16000, // Optimal for speech
+          sampleRate: 44100, // CD品質（高品質録音）
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true
-        } 
+        }
       });
       console.log('✅ WavRecorder: Microphone access granted');
       

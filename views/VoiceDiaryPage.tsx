@@ -35,10 +35,24 @@ export function VoiceDiaryPage({ user }: VoiceDiaryPageProps) {
   } | null>(null);
   const [emotionResult, setEmotionResult] = useState<{
     file: string;
-    ang: number;
-    hap: number;
-    sad: number;
-    emo: string;
+    segments: Array<{
+      segment_id: number;
+      start: number;
+      end: number;
+      duration: number;
+      ang: number;
+      hap: number;
+      sad: number;
+      emo: string;
+    }>;
+    summary: {
+      total_segments: number;
+      avg_ang: number;
+      avg_hap: number;
+      avg_sad: number;
+      dominant_emotion: string;
+      emotion_distribution: { [key: string]: number };
+    };
   } | null>(null);
 
   const handleRecordingComplete = async (blob: Blob, duration: number) => {
@@ -102,8 +116,9 @@ export function VoiceDiaryPage({ user }: VoiceDiaryPageProps) {
         console.log('Emotion result:', emotionData);
         setEmotionResult(emotionData.emotion);
       }
-      
-      // 3. Call Claude 3.5 Sonnet for formatting
+
+      // 3. Call Claude 3.5 Sonnet for formatting (コメントアウト)
+      /*
       console.log('Step 3: Calling Claude 3.5 Sonnet...');
       const formatResponse = await fetch('/api/format-text', {
         method: 'POST',
@@ -114,19 +129,28 @@ export function VoiceDiaryPage({ user }: VoiceDiaryPageProps) {
           originalText: whisperData.originalText,
         }),
       });
-      
+
       if (!formatResponse.ok) {
         throw new Error('Format API failed');
       }
-      
+
       const formatData = await formatResponse.json();
       console.log('Format result:', formatData);
       setFormattedText(formatData.formattedText);
-      
+
       // Set token usage
       setTokenUsage({
         whisperDuration: duration, // Use the actual recording duration
         claude: formatData.claudeTokens || { input: 0, output: 0, total: 0 }
+      });
+      */
+
+      // Claude整形をスキップ（一時的にコメントアウト）
+      console.log('Step 3: Claude formatting skipped (commented out)');
+      setFormattedText(whisperData.originalText); // Whisperの結果をそのまま使用
+      setTokenUsage({
+        whisperDuration: duration,
+        claude: { input: 0, output: 0, total: 0 }
       });
       
       console.log('=== Processing Complete ===');
@@ -200,27 +224,72 @@ export function VoiceDiaryPage({ user }: VoiceDiaryPageProps) {
                       <span className="px-2 py-0.5 rounded-full text-xs bg-purple-500/10 text-purple-600">感情分析</span>
                       <h3 className="font-semibold">感情分析結果</h3>
                     </div>
-                    <div className="p-4 rounded-xl bg-muted inner-soft">
-                      <div className="space-y-2">
-                        <div className="grid grid-cols-3 gap-4 text-sm">
-                          <div>
-                            <span className="text-muted-foreground">ang (怒り):</span>
-                            <p className="font-mono text-lg">{emotionResult.ang.toFixed(4)}</p>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">hap (喜び):</span>
-                            <p className="font-mono text-lg">{emotionResult.hap.toFixed(4)}</p>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">sad (悲しみ):</span>
-                            <p className="font-mono text-lg">{emotionResult.sad.toFixed(4)}</p>
-                          </div>
+
+                    {/* 総評 */}
+                    <div className="p-4 rounded-xl bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 mb-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="font-semibold text-lg">総評</h4>
+                        <span className="px-3 py-1 rounded-full text-sm font-semibold bg-white/60 dark:bg-black/20">
+                          {emotionResult.summary.dominant_emotion === 'ang' && '😠 怒り'}
+                          {emotionResult.summary.dominant_emotion === 'hap' && '😊 喜び'}
+                          {emotionResult.summary.dominant_emotion === 'sad' && '😢 悲しみ'}
+                          {!['ang', 'hap', 'sad'].includes(emotionResult.summary.dominant_emotion) && '😐 その他'}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-3 text-sm mb-3">
+                        <div className="text-center p-2 rounded-lg bg-white/50 dark:bg-black/10">
+                          <span className="text-muted-foreground block text-xs">平均 怒り</span>
+                          <p className="font-mono text-lg font-semibold">{emotionResult.summary.avg_ang.toFixed(3)}</p>
                         </div>
-                        <div className="pt-2 mt-2 border-t">
-                          <span className="text-muted-foreground">判定結果 (emo):</span>
-                          <p className="font-semibold text-lg">{emotionResult.emo}</p>
+                        <div className="text-center p-2 rounded-lg bg-white/50 dark:bg-black/10">
+                          <span className="text-muted-foreground block text-xs">平均 喜び</span>
+                          <p className="font-mono text-lg font-semibold">{emotionResult.summary.avg_hap.toFixed(3)}</p>
+                        </div>
+                        <div className="text-center p-2 rounded-lg bg-white/50 dark:bg-black/10">
+                          <span className="text-muted-foreground block text-xs">平均 悲しみ</span>
+                          <p className="font-mono text-lg font-semibold">{emotionResult.summary.avg_sad.toFixed(3)}</p>
                         </div>
                       </div>
+                      <div className="text-xs text-muted-foreground">
+                        検出された発話区間: {emotionResult.summary.total_segments}個
+                      </div>
+                    </div>
+
+                    {/* 各セグメントの詳細 */}
+                    <div className="space-y-3">
+                      <h4 className="font-semibold text-sm text-muted-foreground">発話区間ごとの分析</h4>
+                      {emotionResult.segments.map((segment) => (
+                        <div
+                          key={segment.segment_id}
+                          className="p-3 rounded-lg bg-muted inner-soft"
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-semibold text-muted-foreground">
+                              区間 {segment.segment_id}: {segment.start.toFixed(1)}秒 - {segment.end.toFixed(1)}秒 ({segment.duration.toFixed(1)}秒)
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-primary/10 text-primary">
+                              {segment.emo === 'ang' && '😠 怒り'}
+                              {segment.emo === 'hap' && '😊 喜び'}
+                              {segment.emo === 'sad' && '😢 悲しみ'}
+                              {!['ang', 'hap', 'sad'].includes(segment.emo) && '😐 その他'}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 text-xs">
+                            <div>
+                              <span className="text-muted-foreground">怒り:</span>
+                              <p className="font-mono">{segment.ang.toFixed(3)}</p>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">喜び:</span>
+                              <p className="font-mono">{segment.hap.toFixed(3)}</p>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">悲しみ:</span>
+                              <p className="font-mono">{segment.sad.toFixed(3)}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
