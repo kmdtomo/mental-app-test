@@ -115,21 +115,44 @@ finally:
       
       const emotionResult = JSON.parse(jsonLine);
       console.log('Emotion result:', emotionResult);
-      
+
       // エラーチェック
       if (emotionResult.error) {
         throw new Error(`Emotion analysis error: ${emotionResult.error}`);
       }
-      
+
+      // Save to emotion_analysis_results table
+      const { saveEmotionAnalysis } = await import('@/lib/db/emotionAnalysis');
+      const { updateDailySummaryEmotions } = await import('@/lib/db/dailySummary');
+
+      const saveResult = await saveEmotionAnalysis(
+        recordingId,
+        user.id,
+        emotionResult.segments,
+        emotionResult.summary
+      );
+
+      if (!saveResult.success) {
+        console.error('Failed to save emotion analysis to DB:', saveResult.error);
+        // 保存失敗してもフロントエンドには結果を返す
+      } else {
+        console.log('Emotion analysis saved to DB:', saveResult.id);
+
+        // daily_summariesの感情データを更新
+        const date = new Date().toISOString().split('T')[0];
+        await updateDailySummaryEmotions(user.id, date);
+      }
+
       // クリーンアップ
       await Promise.all([
         fs.unlink(scriptPath).catch(() => {}),
         fs.unlink(tempWavPath).catch(() => {})
       ]);
-      
+
       return NextResponse.json({
         success: true,
-        emotion: emotionResult
+        emotion: emotionResult,
+        savedToDb: saveResult.success
       });
       
     } catch (error) {
