@@ -46,14 +46,41 @@ export class WavRecorder {
   async start(): Promise<void> {
     try {
       console.log('🎙️ WavRecorder: Starting recording...');
-      
+
       // Initialize WAV encoder
       await initializeWavRecorder();
 
       // Get microphone access
       console.log('🎤 WavRecorder: Requesting microphone access...');
+
+      // Enumerate devices to find built-in microphone (exclude iPhone Continuity)
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputs = devices.filter(device => device.kind === 'audioinput');
+
+      console.log('🎤 Available audio inputs:', audioInputs.map(d => ({
+        deviceId: d.deviceId,
+        label: d.label,
+        groupId: d.groupId
+      })));
+
+      // Filter out iPhone Continuity microphone
+      // Continuity devices typically have "iPhone" in the label
+      const builtInMic = audioInputs.find(device =>
+        !device.label.toLowerCase().includes('iphone') &&
+        !device.label.toLowerCase().includes('continuity')
+      );
+
+      const deviceId = builtInMic?.deviceId;
+
+      if (deviceId) {
+        console.log('🎤 Using device:', builtInMic?.label || 'Default');
+      } else {
+        console.log('🎤 No built-in mic found, using default');
+      }
+
       this.stream = await navigator.mediaDevices.getUserMedia({
         audio: {
+          deviceId: deviceId ? { exact: deviceId } : undefined,
           channelCount: 1,
           sampleRate: 44100, // CD品質（高品質録音）
           echoCancellation: true,
