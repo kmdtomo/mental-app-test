@@ -1,8 +1,9 @@
 'use client';
 
 import { Button } from '@/components/ui/Button';
-import { LogOut, User, Mic } from 'lucide-react';
+import { LogOut, User, Mic, MessageCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 interface UserHeaderProps {
   user: {
@@ -45,8 +46,20 @@ export function UserHeader({ user }: UserHeaderProps) {
             <h1 className="text-lg font-semibold tracking-tight">音声日記</h1>
           </div>
 
-          {/* 右側: ユーザー名 + ログアウト */}
+          {/* 右側: ナビゲーション + ユーザー名 + ログアウト */}
           <div className="flex items-center gap-4">
+            {/* AIチャットへのリンク */}
+            <Link href="/diary-chat">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-2 text-muted-foreground hover:text-primary hover:bg-primary/10"
+              >
+                <MessageCircle className="h-4 w-4" />
+                <span className="hidden sm:inline">AIチャット</span>
+              </Button>
+            </Link>
+
             <div className="hidden md:flex items-center gap-2 text-sm">
               <div className="text-right leading-tight">
                 <div className="font-medium">{displayName}</div>
@@ -64,7 +77,7 @@ export function UserHeader({ user }: UserHeaderProps) {
               className="gap-2 text-muted-foreground hover:text-primary hover:bg-primary/10"
             >
               <LogOut className="h-4 w-4" />
-              ログアウト
+              <span className="hidden sm:inline">ログアウト</span>
             </Button>
           </div>
         </div>
