@@ -99,9 +99,14 @@ interface VoiceDiaryPageProps {
     email?: string;
     user_metadata?: any;
   };
+  recordingLimit?: {
+    used: number;
+    remaining: number;
+    total: number;
+  };
 }
 
-export function VoiceDiaryPage({ user }: VoiceDiaryPageProps) {
+export function VoiceDiaryPage({ user, recordingLimit }: VoiceDiaryPageProps) {
   const [recordingBlob, setRecordingBlob] = useState<Blob | null>(null);
   const [recordingDuration, setRecordingDuration] = useState<number>(0); // seconds
   const [transcription, setTranscription] = useState<string>('');
@@ -252,9 +257,21 @@ export function VoiceDiaryPage({ user }: VoiceDiaryPageProps) {
               </span>
               <h2 className="mt-2 text-2xl font-semibold tracking-tight">気持ちを声にしてみましょう</h2>
               <p className="mt-1 text-sm text-muted-foreground">1分以内で気軽に話してみましょう</p>
+
+              {/* 録音回数の残り表示 */}
+              {recordingLimit && (
+                <div className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-muted">
+                  <span className="text-xs font-medium">
+                    今日の録音: {recordingLimit.used}/{recordingLimit.total}回
+                  </span>
+                  <span className="text-xs font-semibold text-primary">
+                    残り{recordingLimit.remaining}回
+                  </span>
+                </div>
+              )}
             </div>
             <div className="mt-6">
-              <VoiceRecorder 
+              <VoiceRecorder
                 onRecordingComplete={handleRecordingComplete}
                 maxDuration={60000}
               />
