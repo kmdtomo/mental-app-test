@@ -71,7 +71,6 @@ export function DiaryCTA({ hasTodayDiary = false, recordingLimit }: DiaryCTAProp
 
 interface DiaryEntry {
   date: string;
-  dominant_emotion: string | null;
   total_recordings: number;
 }
 
@@ -119,23 +118,6 @@ export function DiaryCalendar({ entries }: DiaryCalendarProps) {
     }
   };
 
-  const getEmotionColor = (emotion: string | null): string => {
-    if (!emotion) return 'bg-muted';
-
-    const colorMap: { [key: string]: string } = {
-      'happy': 'bg-green-100 dark:bg-green-900/30 border-green-300',
-      'excited': 'bg-green-100 dark:bg-green-900/30 border-green-300',
-      'sad': 'bg-blue-100 dark:bg-blue-900/30 border-blue-300',
-      'tired': 'bg-blue-100 dark:bg-blue-900/30 border-blue-300',
-      'angry': 'bg-red-100 dark:bg-red-900/30 border-red-300',
-      'stressed': 'bg-orange-100 dark:bg-orange-900/30 border-orange-300',
-      'calm': 'bg-yellow-100 dark:bg-yellow-900/30 border-yellow-300',
-      'relaxed': 'bg-yellow-100 dark:bg-yellow-900/30 border-yellow-300',
-      'neutral': 'bg-gray-100 dark:bg-gray-800 border-gray-300'
-    };
-
-    return colorMap[emotion] || 'bg-muted';
-  };
 
   const isToday = (day: number): boolean => {
     const today = new Date();
@@ -195,7 +177,7 @@ export function DiaryCalendar({ entries }: DiaryCalendarProps) {
                 transition-all relative
                 ${todayClass ? 'ring-2 ring-primary ring-offset-2' : ''}
                 ${hasEntry
-                  ? `${getEmotionColor(entry.dominant_emotion)} cursor-pointer hover:scale-105 hover:shadow-md border`
+                  ? 'bg-primary/10 cursor-pointer hover:scale-105 hover:shadow-md border border-primary/20'
                   : 'text-muted-foreground cursor-default'
                 }
               `}
@@ -210,21 +192,9 @@ export function DiaryCalendar({ entries }: DiaryCalendarProps) {
       </div>
 
       <div className="mt-4 pt-4 border-t">
-        <p className="text-xs text-muted-foreground mb-2">感情の色分け:</p>
-        <div className="grid grid-cols-3 gap-2 text-xs">
-          <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded bg-green-100 dark:bg-green-900/30 border border-green-300" />
-            <span>幸せ/興奮</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded bg-blue-100 dark:bg-blue-900/30 border border-blue-300" />
-            <span>悲しみ/疲労</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-3 h-3 rounded bg-red-100 dark:bg-red-900/30 border border-red-300" />
-            <span>怒り</span>
-          </div>
-        </div>
+        <p className="text-xs text-muted-foreground text-center">
+          日記がある日付をクリックして詳細を確認
+        </p>
       </div>
     </div>
   );

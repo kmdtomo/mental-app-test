@@ -27,10 +27,10 @@ interface DiaryDetailPageProps {
   summary: {
     transcription_text: string | null;
     formatted_text: string | null;
-    avg_arousal: number;
-    avg_valence: number;
-    avg_dominance: number;
-    emotion_distribution: { [key: string]: number };
+    avg_arousal: number | null;
+    avg_valence: number | null;
+    avg_dominance: number | null;
+    emotion_distribution: { [key: string]: number } | null;
     total_recordings: number;
     total_duration_seconds: number;
     ai_insights: string | null;
@@ -39,6 +39,8 @@ interface DiaryDetailPageProps {
 }
 
 export function DiaryDetailPage({ user, date, summary, dialogueTurns }: DiaryDetailPageProps) {
+  // transcription_textは使用しない - formatted_textのみを日記の要約として表示
+
   if (!summary) {
     return (
       <div className="min-h-screen panel">
@@ -92,27 +94,22 @@ export function DiaryDetailPage({ user, date, summary, dialogueTurns }: DiaryDet
             </div>
           </div>
 
-          {/* 感情サマリー */}
+          {/* 感情分析 */}
           <EmotionSummaryCard
             avgArousal={summary.avg_arousal}
             avgValence={summary.avg_valence}
             avgDominance={summary.avg_dominance}
-            emotionDistribution={summary.emotion_distribution}
-            totalRecordings={summary.total_recordings}
-            totalDuration={summary.total_duration_seconds}
+            aiInsights={summary.ai_insights}
           />
 
           {/* 日記テキスト */}
           <DiaryTextCard
-            transcriptionText={summary.transcription_text || ''}
-            formattedText={summary.formatted_text || undefined}
+            formattedText={summary.formatted_text ? summary.formatted_text : undefined}
+            date={date}
           />
 
           {/* AI対話履歴 */}
           <DialogueHistoryCard turns={dialogueTurns} />
-
-          {/* AIからの気づき */}
-          <AIInsightsCard insights={summary.ai_insights} />
         </div>
       </div>
     </div>

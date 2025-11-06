@@ -6,7 +6,6 @@ import { UserHeader } from '@/features/voice-diary/components/UserHeader';
 
 interface DiaryEntry {
   date: string;
-  dominant_emotion: string | null;
   total_recordings: number;
 }
 

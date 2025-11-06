@@ -79,11 +79,22 @@ export async function saveAIMessage(
 }
 
 /**
- * その日の対話履歴を取得
+ * その日の対話履歴を感情データ付きで取得
  */
 export async function getTodayDialogue(): Promise<{
   success: boolean;
-  messages?: Array<{ role: 'user' | 'assistant'; content: string; created_at: string; input_type: string | null }>;
+  messages?: Array<{
+    role: 'user' | 'assistant';
+    content: string;
+    timestamp: string;
+    emotionData?: {
+      segments: any[];
+      total_segments: number;
+      avg_arousal: number;
+      avg_valence: number;
+      avg_dominance: number;
+    };
+  }>;
   error?: string;
 }> {
   const cookieStore = cookies();
@@ -97,9 +108,10 @@ export async function getTodayDialogue(): Promise<{
 
   const date = new Date().toISOString().split('T')[0];
 
-  const { data, error } = await supabase
+  // まずdialogue_turnsを取得
+  const { data: turns, error } = await supabase
     .from('dialogue_turns')
-    .select('role, content, created_at, input_type')
+    .select('role, content, created_at, input_type, recording_id')
     .eq('user_id', user.id)
     .eq('date', date)
     .order('order_index', { ascending: true });
@@ -109,5 +121,38 @@ export async function getTodayDialogue(): Promise<{
     return { success: false, error: error.message };
   }
 
-  return { success: true, messages: data || [] };
+  // 各ターンの感情データを個別に取得
+  const messages = await Promise.all(
+    turns?.map(async (turn) => {
+      let emotionData = undefined;
+
+      // ユーザーの音声入力で、recording_idがある場合のみ
+      if (turn.role === 'user' && turn.recording_id) {
+        const { data: emotion, error: emotionError } = await supabase
+          .from('emotion_analysis_results')
+          .select('segments, total_segments, avg_arousal, avg_valence, avg_dominance')
+          .eq('recording_id', turn.recording_id)
+          .maybeSingle();
+
+        if (emotion && !emotionError) {
+          emotionData = {
+            segments: emotion.segments,
+            total_segments: emotion.total_segments,
+            avg_arousal: emotion.avg_arousal,
+            avg_valence: emotion.avg_valence,
+            avg_dominance: emotion.avg_dominance
+          };
+        }
+      }
+
+      return {
+        role: turn.role as 'user' | 'assistant',
+        content: turn.content,
+        timestamp: turn.created_at,
+        emotionData: emotionData
+      };
+    }) || []
+  );
+
+  return { success: true, messages };
 }

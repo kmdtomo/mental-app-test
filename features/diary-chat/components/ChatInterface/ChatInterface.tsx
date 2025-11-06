@@ -42,28 +42,35 @@ export function ChatInterface({ messages, isLoading = false, loadingMessage = 'A
   };
 
   const vadToEmotion = (arousal: number, valence: number, dominance: number): string => {
-    const arousalMid = 4.0;
-    const valenceMid = 4.0;
+    // 閾値を調整（より敏感に検出）
+    const arousalLow = arousal <= 3.3;
+    const arousalHigh = arousal >= 3.8;
+    const valenceLow = valence <= 3.8;
+    const valenceHigh = valence >= 4.2;
 
-    const arousalHigh = arousal > arousalMid;
-    const valencHigh = valence > valenceMid;
+    // 悲しみ・疲労（低覚醒・低快度）
+    if (arousalLow && valenceLow) return '😢 悲しみ';
 
-    const arousalVeryHigh = arousal > 4.3;
-    const arousalVeryLow = arousal < 3.7;
-    const valenceVeryHigh = valence > 4.3;
-    const valenceVeryLow = valence < 3.8;
+    // ストレス・緊張（高覚醒・低快度）
+    if (arousalHigh && valenceLow) return '😰 ストレス';
 
-    if (arousalVeryHigh && valenceVeryHigh) return '🤩 興奮';
-    if (arousalHigh && valencHigh) return '😊 幸せ';
-    if (arousalVeryHigh && valenceVeryLow) return '😠 怒り';
-    if (arousalHigh && !valencHigh) return '😰 ストレス';
-    if (arousalVeryLow && valencHigh) return '😌 穏やか';
-    if (!arousalHigh && valenceVeryHigh) return '😎 リラックス';
-    if (arousalVeryLow && valenceVeryLow) return '😢 悲しみ';
-    if (!arousalHigh && valenceVeryLow) return '😴 疲労';
+    // 喜び・興奮（高覚醒・高快度）
+    if (arousalHigh && valenceHigh) return '😊 幸せ';
 
-    if (valencHigh) return '😊 幸せ';
-    if (valenceVeryLow) return '😢 悲しみ';
+    // 穏やか・リラックス（低覚醒・高快度）
+    if (arousalLow && valenceHigh) return '😌 穏やか';
+
+    // 快度が低め＋覚醒度も低め → 疲労
+    if (valence < 4.0 && arousal <= 3.5) return '😴 疲労';
+
+    // 快度が低い → 落ち込み
+    if (valence < 3.7) return '😢 悲しみ';
+
+    // 快度が高い → 満足
+    if (valence >= 4.3) return '😊 幸せ';
+
+    // 覚醒度が低い → 疲労
+    if (arousal < 3.5) return '😴 疲労';
 
     return '😐 中立';
   };
@@ -113,7 +120,7 @@ export function ChatInterface({ messages, isLoading = false, loadingMessage = 'A
                   <div className="mt-3 pt-3 border-t border-white/20">
                     <button
                       onClick={() => toggleExpand(index)}
-                      className="flex items-center gap-2 text-xs opacity-90 hover:opacity-100 transition-opacity"
+                      className="flex items-center gap-2 text-xs opacity-90 hover:opacity-100 transition-opacity w-full"
                     >
                       {isExpanded ? (
                         <>

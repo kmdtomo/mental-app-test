@@ -22,7 +22,7 @@ export default async function Dashboard() {
   // 過去90日分のサマリーを取得
   const { data: summaries } = await supabase
     .from('daily_summaries')
-    .select('date, dominant_emotion, total_recordings')
+    .select('date, total_recordings')
     .eq('user_id', user.id)
     .order('date', { ascending: false })
     .limit(90);

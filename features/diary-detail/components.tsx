@@ -1,6 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import { Card } from '@/components/ui/Card';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 
 // ============================================================
 // EmotionSummaryCard Component
@@ -13,6 +15,7 @@ interface EmotionSummaryCardProps {
   emotionDistribution: { [key: string]: number };
   totalRecordings: number;
   totalDuration: number;
+  aiInsights?: string | null;
 }
 
 export function EmotionSummaryCard({
@@ -21,7 +24,8 @@ export function EmotionSummaryCard({
   avgDominance,
   emotionDistribution,
   totalRecordings,
-  totalDuration
+  totalDuration,
+  aiInsights
 }: EmotionSummaryCardProps) {
   const getEmotionEmoji = (emotion: string) => {
     const emojiMap: { [key: string]: string } = {
@@ -41,8 +45,9 @@ export function EmotionSummaryCard({
     return labelMap[emotion] || emotion;
   };
 
-  const dominantEmotion = Object.entries(emotionDistribution)
-    .sort((a, b) => b[1] - a[1])[0]?.[0] || 'neutral';
+  const dominantEmotion = emotionDistribution && Object.keys(emotionDistribution).length > 0
+    ? Object.entries(emotionDistribution).sort((a, b) => b[1] - a[1])[0]?.[0]
+    : 'neutral';
 
   const ProgressBar = ({ label, value, max = 5 }: { label: string; value: number; max?: number }) => {
     const percentage = (value / max) * 100;
@@ -66,30 +71,34 @@ export function EmotionSummaryCard({
     <Card className="p-6">
       <h3 className="font-semibold text-lg mb-4">😊 感情サマリー</h3>
 
-      {/* 主要な感情 */}
-      <div className="text-center mb-6 p-4 rounded-xl bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20">
-        <span className="text-4xl">{getEmotionEmoji(dominantEmotion)}</span>
-        <p className="text-lg font-semibold mt-2">{getEmotionLabel(dominantEmotion)}</p>
-        <p className="text-xs text-muted-foreground mt-1">主な感情</p>
-      </div>
+      {/* AI感情要約 */}
+      {aiInsights && (
+        <div className="mb-6 p-4 rounded-xl bg-primary/5 border border-primary/20">
+          <p className="text-sm leading-relaxed whitespace-pre-wrap">
+            {aiInsights}
+          </p>
+        </div>
+      )}
 
       {/* 感情分布 */}
-      <div className="mb-6">
-        <p className="text-sm font-semibold mb-3">感情の分布</p>
-        <div className="grid grid-cols-2 gap-2 text-sm">
-          {Object.entries(emotionDistribution)
-            .sort((a, b) => b[1] - a[1])
-            .map(([emotion, count]) => (
-              <div key={emotion} className="flex items-center justify-between p-2 rounded-lg bg-muted">
-                <span className="flex items-center gap-2">
-                  <span>{getEmotionEmoji(emotion)}</span>
-                  <span className="text-xs">{getEmotionLabel(emotion)}</span>
-                </span>
-                <span className="font-mono text-xs font-semibold">{count}回</span>
-              </div>
-            ))}
+      {emotionDistribution && Object.keys(emotionDistribution).length > 0 && (
+        <div className="mb-6">
+          <p className="text-sm font-semibold mb-3">感情の分布</p>
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            {Object.entries(emotionDistribution)
+              .sort((a, b) => b[1] - a[1])
+              .map(([emotion, count]) => (
+                <div key={emotion} className="flex items-center justify-between p-2 rounded-lg bg-muted">
+                  <span className="flex items-center gap-2">
+                    <span>{getEmotionEmoji(emotion)}</span>
+                    <span className="text-xs">{getEmotionLabel(emotion)}</span>
+                  </span>
+                  <span className="font-mono text-xs font-semibold">{count}回</span>
+                </div>
+              ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* VAD値 */}
       <div className="space-y-3 mb-6">
@@ -119,17 +128,19 @@ export function EmotionSummaryCard({
 // ============================================================
 
 interface DiaryTextCardProps {
-  transcriptionText: string;
+  // transcription_textは使用しない - formatted_textのみを日記の要約として表示
   formattedText?: string;
 }
 
-export function DiaryTextCard({ transcriptionText, formattedText }: DiaryTextCardProps) {
+export function DiaryTextCard({ formattedText }: DiaryTextCardProps) {
+  // formatted_textを日記の要約として表示
+  // AI要約前には要約が生成されていないことを確認
   return (
     <Card className="p-6">
       <h3 className="font-semibold text-lg mb-4">📝 今日の日記</h3>
       <div className="p-4 rounded-xl bg-muted inner-soft">
         <p className="whitespace-pre-wrap leading-relaxed text-sm">
-          {formattedText || transcriptionText || '日記がありません'}
+          {formattedText || '日記がありません'}
         </p>
       </div>
     </Card>
@@ -145,6 +156,15 @@ interface DialogueTurn {
   content: string;
   created_at: string;
   input_type: string | null;
+  voice_recordings?: Array<{
+    emotion_analysis_results: Array<{
+      segments: any[];
+      total_segments: number;
+      avg_arousal: number;
+      avg_valence: number;
+      avg_dominance: number;
+    }>;
+  }>;
 }
 
 interface DialogueHistoryCardProps {
@@ -152,6 +172,41 @@ interface DialogueHistoryCardProps {
 }
 
 export function DialogueHistoryCard({ turns }: DialogueHistoryCardProps) {
+  const [expandedMessages, setExpandedMessages] = useState<Set<number>>(new Set());
+
+  const toggleExpand = (index: number) => {
+    const newExpanded = new Set(expandedMessages);
+    if (newExpanded.has(index)) {
+      newExpanded.delete(index);
+    } else {
+      newExpanded.add(index);
+    }
+    setExpandedMessages(newExpanded);
+  };
+
+  const vadToEmotion = (arousal: number, valence: number, dominance: number): string => {
+    const arousalMid = 4.0;
+    const valenceMid = 4.0;
+    const arousalHigh = arousal > arousalMid;
+    const valencHigh = valence > valenceMid;
+    const arousalVeryHigh = arousal > 4.3;
+    const arousalVeryLow = arousal < 3.7;
+    const valenceVeryHigh = valence > 4.3;
+    const valenceVeryLow = valence < 3.8;
+
+    if (arousalVeryHigh && valenceVeryHigh) return '🤩 興奮';
+    if (arousalHigh && valencHigh) return '😊 幸せ';
+    if (arousalVeryHigh && valenceVeryLow) return '😠 怒り';
+    if (arousalHigh && !valencHigh) return '😰 ストレス';
+    if (arousalVeryLow && valencHigh) return '😌 穏やか';
+    if (!arousalHigh && valenceVeryHigh) return '😎 リラックス';
+    if (arousalVeryLow && valenceVeryLow) return '😢 悲しみ';
+    if (!arousalHigh && valenceVeryLow) return '😴 疲労';
+    if (valencHigh) return '😊 幸せ';
+    if (valenceVeryLow) return '😢 悲しみ';
+    return '😐 中立';
+  };
+
   if (turns.length === 0) {
     return (
       <Card className="p-6">
@@ -168,27 +223,85 @@ export function DialogueHistoryCard({ turns }: DialogueHistoryCardProps) {
       <h3 className="font-semibold text-lg mb-4">💬 AIとの対話</h3>
 
       <div className="space-y-3">
-        {turns.map((turn, i) => (
-          <div key={i} className={`flex ${turn.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div
-              className={`max-w-[80%] rounded-2xl px-4 py-3 ${
-                turn.role === 'user'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted'
-              }`}
-            >
-              <p className="text-sm whitespace-pre-wrap">{turn.content}</p>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-xs opacity-70">
-                  {new Date(turn.created_at).toLocaleTimeString('ja-JP', {
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
-                </span>
+        {turns.map((turn, i) => {
+          const emotionData = turn.voice_recordings?.[0]?.emotion_analysis_results?.[0];
+          const isExpanded = expandedMessages.has(i);
+
+          return (
+            <div key={i} className={`flex ${turn.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div
+                className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+                  turn.role === 'user'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted'
+                }`}
+              >
+                <p className="text-sm whitespace-pre-wrap">{turn.content}</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-xs opacity-70">
+                    {new Date(turn.created_at).toLocaleTimeString('ja-JP', {
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </span>
+                </div>
+
+                {/* 感情データがある場合は詳細表示ボタン */}
+                {turn.role === 'user' && emotionData && (
+                  <div className="mt-3 pt-3 border-t border-white/20">
+                    <button
+                      onClick={() => toggleExpand(i)}
+                      className="flex items-center gap-2 text-xs opacity-90 hover:opacity-100 transition-opacity w-full"
+                    >
+                      {isExpanded ? (
+                        <>
+                          <ChevronUp className="h-3 w-3" />
+                          <span>詳細を閉じる</span>
+                        </>
+                      ) : (
+                        <>
+                          <ChevronDown className="h-3 w-3" />
+                          <span>感情分析を見る</span>
+                        </>
+                      )}
+                    </button>
+
+                    {isExpanded && (
+                      <div className="mt-3 space-y-2 text-xs">
+                        <div className="p-3 rounded-lg bg-black/10 dark:bg-white/10">
+                          <p className="font-semibold mb-2">
+                            {vadToEmotion(
+                              emotionData.avg_arousal,
+                              emotionData.avg_valence,
+                              emotionData.avg_dominance
+                            )}
+                          </p>
+                          <div className="grid grid-cols-3 gap-2">
+                            <div>
+                              <span className="opacity-70">覚醒度:</span>
+                              <p className="font-mono">{emotionData.avg_arousal.toFixed(2)}</p>
+                            </div>
+                            <div>
+                              <span className="opacity-70">快度:</span>
+                              <p className="font-mono">{emotionData.avg_valence.toFixed(2)}</p>
+                            </div>
+                            <div>
+                              <span className="opacity-70">優位性:</span>
+                              <p className="font-mono">{emotionData.avg_dominance.toFixed(2)}</p>
+                            </div>
+                          </div>
+                          <p className="mt-2 opacity-70">
+                            {emotionData.total_segments}個の発話区間を検出
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </Card>
   );

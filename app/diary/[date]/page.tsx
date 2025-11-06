@@ -29,12 +29,38 @@ export default async function DiaryDetail({ params }: { params: { date: string }
     .maybeSingle();
 
   // その日の対話履歴を取得
-  const { data: dialogueTurns } = await supabase
+  const { data: rawTurns } = await supabase
     .from('dialogue_turns')
-    .select('role, content, created_at, input_type')
+    .select('role, content, created_at, input_type, recording_id')
     .eq('user_id', user.id)
     .eq('date', params.date)
     .order('order_index', { ascending: true });
+
+  // 各ターンの感情データを個別に取得
+  const dialogueTurns = await Promise.all(
+    rawTurns?.map(async (turn) => {
+      let emotionData = undefined;
+
+      if (turn.role === 'user' && turn.recording_id) {
+        const { data: emotion } = await supabase
+          .from('emotion_analysis_results')
+          .select('segments, total_segments, avg_arousal, avg_valence, avg_dominance')
+          .eq('recording_id', turn.recording_id)
+          .maybeSingle();
+
+        if (emotion) {
+          emotionData = {
+            emotion_analysis_results: [emotion]
+          };
+        }
+      }
+
+      return {
+        ...turn,
+        voice_recordings: emotionData ? [emotionData] : undefined
+      };
+    }) || []
+  );
 
   return (
     <DiaryDetailPage

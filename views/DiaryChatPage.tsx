@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { ChatInterface, ChatMessage } from '@/features/diary-chat/components';
 import { UserHeader } from '@/features/voice-diary/components/UserHeader';
 import { VoiceRecorder } from '@/features/voice-diary/components/VoiceRecorder';
 import { Card } from '@/components/ui/Card';
-import { MessageCircle, ArrowLeft } from 'lucide-react';
+import { MessageCircle, ArrowLeft, FileText } from 'lucide-react';
 import Link from 'next/link';
 import { getTodayDialogue } from '@/features/diary-chat/actions/chatActions';
 
@@ -23,9 +24,11 @@ interface DiaryChatPageProps {
 }
 
 export function DiaryChatPage({ user, recordingLimit }: DiaryChatPageProps) {
+  const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('処理中...');
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
 
   // 初回ロード時に今日の対話履歴を取得
   useEffect(() => {
@@ -33,18 +36,10 @@ export function DiaryChatPage({ user, recordingLimit }: DiaryChatPageProps) {
   }, []);
 
   const loadTodayDialogue = async () => {
-    console.log('=== Loading Today Dialogue ===');
     const result = await getTodayDialogue();
 
     if (result.success && result.messages) {
-      console.log('Loaded messages:', result.messages.length);
-      const chatMessages: ChatMessage[] = result.messages.map(msg => ({
-        role: msg.role,
-        content: msg.content,
-        timestamp: msg.created_at,
-        inputType: msg.input_type as 'text' | 'voice' | undefined
-      }));
-      setMessages(chatMessages);
+      setMessages(result.messages);
     }
   };
 
@@ -139,9 +134,44 @@ export function DiaryChatPage({ user, recordingLimit }: DiaryChatPageProps) {
       setMessages(prev => [...prev, aiMessage]);
       setIsLoading(false);
 
+      // ボタンからの手動生成のみ対応
+
     } catch (error) {
       console.error('Error processing recording:', error);
       setIsLoading(false);
+    }
+  };
+
+  const generateSummaryAndRedirect = async () => {
+    setIsGeneratingSummary(true);
+    setLoadingMessage('日記を生成しています...');
+    setIsLoading(true);
+
+    try {
+      const date = new Date().toISOString().split('T')[0];
+
+      // サマリー生成API呼び出し
+      const response = await fetch('/api/generate-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ date }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Summary generation failed');
+      }
+
+      const data = await response.json();
+      console.log('Summary generated:', data);
+
+      // 日記ページに遷移
+      router.push(`/diary/${date}`);
+
+    } catch (error) {
+      console.error('Error generating summary:', error);
+      setIsLoading(false);
+      setIsGeneratingSummary(false);
     }
   };
 
@@ -174,35 +204,51 @@ export function DiaryChatPage({ user, recordingLimit }: DiaryChatPageProps) {
                   </div>
                 </div>
 
-                {/* 録音回数表示 */}
-                {recordingLimit && (
-                  <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-muted">
+                <div className="flex items-center gap-3">
+                  {/* 要約生成ボタン */}
+                  <button
+                    onClick={generateSummaryAndRedirect}
+                    disabled={isGeneratingSummary || messages.filter(m => m.role === 'user').length === 0}
+                    className="flex items-center gap-2 px-4 py-2 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <FileText className="h-4 w-4" />
                     <span className="text-sm font-medium">
-                      今日の録音: {recordingLimit.used}/{recordingLimit.total}回
+                      {isGeneratingSummary ? '生成中...' : '日記を生成'}
                     </span>
-                    <span className="text-sm font-semibold text-primary">
-                      残り{recordingLimit.remaining}回
-                    </span>
-                  </div>
-                )}
+                  </button>
+
+                  {/* 録音回数表示 */}
+                  {recordingLimit && (
+                    <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-muted">
+                      <span className="text-sm font-medium">
+                        今日の録音: {recordingLimit.used}/{recordingLimit.total}回
+                      </span>
+                      <span className="text-sm font-semibold text-primary">
+                        残り{recordingLimit.remaining}回
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
 
           {/* 2カラムレイアウト */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[calc(100vh-320px)]">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8" style={{ height: 'calc(100vh - 280px)', minHeight: '600px' }}>
             {/* 左カラム: チャット履歴 */}
-            <div className="flex flex-col">
-              <div className="mb-3">
+            <div className="flex flex-col min-h-0">
+              <div className="mb-3 flex-shrink-0">
                 <h2 className="text-sm font-semibold text-muted-foreground">💬 対話履歴</h2>
               </div>
-              <Card className="flex-1 rounded-[20px] soft-shadow overflow-hidden">
-                <ChatInterface
-                  messages={messages}
-                  isLoading={isLoading}
-                  loadingMessage={loadingMessage}
-                />
-              </Card>
+              <div className="flex-1 rounded-[20px] soft-shadow overflow-hidden flex flex-col min-h-0 glass">
+                <div className="flex-1 overflow-y-auto">
+                  <ChatInterface
+                    messages={messages}
+                    isLoading={isLoading}
+                    loadingMessage={loadingMessage}
+                  />
+                </div>
+              </div>
             </div>
 
             {/* 右カラム: 音声録音 */}
