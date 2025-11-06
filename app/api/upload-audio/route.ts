@@ -4,11 +4,11 @@ import { cookies } from 'next/headers';
 
 export async function POST(request: NextRequest) {
   console.log('=== Upload Audio API Called ===');
-  
+
   try {
     const cookieStore = cookies();
     const supabase = createClient(cookieStore);
-    
+
     // Get current user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
@@ -16,6 +16,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     console.log('User authenticated:', user.id);
+
+    // 録音回数制限チェック
+    const { canRecord } = await import('@/lib/db/recordings');
+    const limitCheck = await canRecord(user.id);
+
+    if (!limitCheck.canRecord) {
+      console.log('Recording limit reached:', limitCheck);
+      return NextResponse.json({
+        error: '今日の録音制限（5回）に達しました',
+        limitReached: true,
+        used: limitCheck.used,
+        remaining: limitCheck.remaining
+      }, { status: 429 });
+    }
 
     // Get form data
     const formData = await request.formData();

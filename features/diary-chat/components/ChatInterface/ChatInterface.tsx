@@ -1,38 +1,78 @@
 'use client';
 
-import { useState } from 'react';
-import { Send, Mic, Type } from 'lucide-react';
-import { Button } from '@/components/ui/Button';
+import { useState, useEffect, useRef } from 'react';
+import { ChevronDown, ChevronUp, Mic } from 'lucide-react';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
-  inputType?: 'text' | 'voice';
+  emotionData?: {
+    segments: any[];
+    total_segments: number;
+    avg_arousal: number;
+    avg_valence: number;
+    avg_dominance: number;
+  };
 }
 
 interface ChatInterfaceProps {
   messages: ChatMessage[];
-  onSendMessage: (message: string, inputType: 'text' | 'voice') => void;
   isLoading?: boolean;
+  loadingMessage?: string;
 }
 
-export function ChatInterface({ messages, onSendMessage, isLoading = false }: ChatInterfaceProps) {
-  const [inputText, setInputText] = useState('');
-  const [inputMode, setInputMode] = useState<'text' | 'voice'>('text');
+export function ChatInterface({ messages, isLoading = false, loadingMessage = 'AIが考えています...' }: ChatInterfaceProps) {
+  const [expandedMessages, setExpandedMessages] = useState<Set<number>>(new Set());
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const handleSendText = () => {
-    if (inputText.trim() && !isLoading) {
-      onSendMessage(inputText, 'text');
-      setInputText('');
+  // メッセージが追加されたら自動スクロール
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isLoading]);
+
+  const toggleExpand = (index: number) => {
+    const newExpanded = new Set(expandedMessages);
+    if (newExpanded.has(index)) {
+      newExpanded.delete(index);
+    } else {
+      newExpanded.add(index);
     }
+    setExpandedMessages(newExpanded);
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendText();
-    }
+  const vadToEmotion = (arousal: number, valence: number, dominance: number): string => {
+    // 閾値を調整（より敏感に検出）
+    const arousalLow = arousal <= 3.3;
+    const arousalHigh = arousal >= 3.8;
+    const valenceLow = valence <= 3.8;
+    const valenceHigh = valence >= 4.2;
+
+    // 悲しみ・疲労（低覚醒・低快度）
+    if (arousalLow && valenceLow) return '😢 悲しみ';
+
+    // ストレス・緊張（高覚醒・低快度）
+    if (arousalHigh && valenceLow) return '😰 ストレス';
+
+    // 喜び・興奮（高覚醒・高快度）
+    if (arousalHigh && valenceHigh) return '😊 幸せ';
+
+    // 穏やか・リラックス（低覚醒・高快度）
+    if (arousalLow && valenceHigh) return '😌 穏やか';
+
+    // 快度が低め＋覚醒度も低め → 疲労
+    if (valence < 4.0 && arousal <= 3.5) return '😴 疲労';
+
+    // 快度が低い → 落ち込み
+    if (valence < 3.7) return '😢 悲しみ';
+
+    // 快度が高い → 満足
+    if (valence >= 4.3) return '😊 幸せ';
+
+    // 覚醒度が低い → 疲労
+    if (arousal < 3.5) return '😴 疲労';
+
+    return '😐 中立';
   };
 
   return (
@@ -41,107 +81,119 @@ export function ChatInterface({ messages, onSendMessage, isLoading = false }: Ch
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 && (
           <div className="text-center text-muted-foreground py-8">
-            <p className="text-sm">今日の気持ちを話してみましょう</p>
+            <p className="text-sm">録音ボタンを押して、今日の気持ちを話してみましょう</p>
             <p className="text-xs mt-2">AIがあなたの本音を引き出すお手伝いをします</p>
           </div>
         )}
 
-        {messages.map((message, index) => (
-          <div
-            key={index}
-            className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-          >
+        {messages.map((message, index) => {
+          const isExpanded = expandedMessages.has(index);
+
+          return (
             <div
-              className={`max-w-[80%] rounded-2xl px-4 py-3 ${
-                message.role === 'user'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted'
-              }`}
+              key={index}
+              className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
-              <p className="whitespace-pre-wrap text-sm">{message.content}</p>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-xs opacity-70">
-                  {new Date(message.timestamp).toLocaleTimeString('ja-JP', {
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
-                </span>
-                {message.role === 'user' && message.inputType === 'voice' && (
-                  <Mic className="h-3 w-3 opacity-70" />
+              <div
+                className={`max-w-[85%] rounded-2xl px-4 py-3 ${
+                  message.role === 'user'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted'
+                }`}
+              >
+                <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-xs opacity-70">
+                    {new Date(message.timestamp).toLocaleTimeString('ja-JP', {
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </span>
+                  {message.role === 'user' && (
+                    <Mic className="h-3 w-3 opacity-70" />
+                  )}
+                </div>
+
+                {/* 感情データがある場合は詳細表示ボタン */}
+                {message.role === 'user' && message.emotionData && (
+                  <div className="mt-3 pt-3 border-t border-white/20">
+                    <button
+                      onClick={() => toggleExpand(index)}
+                      className="flex items-center gap-2 text-xs opacity-90 hover:opacity-100 transition-opacity w-full"
+                    >
+                      {isExpanded ? (
+                        <>
+                          <ChevronUp className="h-3 w-3" />
+                          <span>詳細を閉じる</span>
+                        </>
+                      ) : (
+                        <>
+                          <ChevronDown className="h-3 w-3" />
+                          <span>感情分析を見る</span>
+                        </>
+                      )}
+                    </button>
+
+                    {isExpanded && (
+                      <div className="mt-3 space-y-2 text-xs">
+                        {/* 総評 */}
+                        <div className="p-3 rounded-lg bg-black/10 dark:bg-white/10">
+                          <p className="font-semibold mb-2">
+                            {vadToEmotion(
+                              message.emotionData.avg_arousal,
+                              message.emotionData.avg_valence,
+                              message.emotionData.avg_dominance
+                            )}
+                          </p>
+                          <div className="grid grid-cols-3 gap-2">
+                            <div>
+                              <span className="opacity-70">覚醒度:</span>
+                              <p className="font-mono">{message.emotionData.avg_arousal.toFixed(2)}</p>
+                            </div>
+                            <div>
+                              <span className="opacity-70">快度:</span>
+                              <p className="font-mono">{message.emotionData.avg_valence.toFixed(2)}</p>
+                            </div>
+                            <div>
+                              <span className="opacity-70">優位性:</span>
+                              <p className="font-mono">{message.emotionData.avg_dominance.toFixed(2)}</p>
+                            </div>
+                          </div>
+                          <p className="mt-2 opacity-70">
+                            {message.emotionData.total_segments}個の発話区間を検出
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {isLoading && (
-          <div className="flex justify-start">
-            <div className="max-w-[80%] rounded-2xl px-4 py-3 bg-muted">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+          <div className={`flex ${loadingMessage.includes('AI') ? 'justify-start' : 'justify-end'}`}>
+            <div className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+              loadingMessage.includes('AI') ? 'bg-muted' : 'bg-primary/20'
+            }`}>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+                <span className={`text-sm ${loadingMessage.includes('AI') ? 'text-muted-foreground' : 'text-primary'}`}>
+                  {loadingMessage}
+                </span>
               </div>
             </div>
           </div>
         )}
-      </div>
 
-      {/* 入力エリア */}
-      <div className="border-t p-4">
-        <div className="flex items-center gap-2 mb-2">
-          <button
-            onClick={() => setInputMode('text')}
-            className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs ${
-              inputMode === 'text'
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-muted-foreground'
-            }`}
-          >
-            <Type className="h-3 w-3" />
-            テキスト
-          </button>
-          <button
-            onClick={() => setInputMode('voice')}
-            className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs ${
-              inputMode === 'voice'
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-muted-foreground'
-            }`}
-          >
-            <Mic className="h-3 w-3" />
-            音声
-          </button>
-        </div>
-
-        {inputMode === 'text' ? (
-          <div className="flex gap-2">
-            <textarea
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={handleKeyPress}
-              placeholder="メッセージを入力..."
-              className="flex-1 resize-none rounded-xl border bg-background px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-              rows={1}
-              disabled={isLoading}
-            />
-            <Button
-              onClick={handleSendText}
-              disabled={!inputText.trim() || isLoading}
-              className="rounded-xl"
-            >
-              <Send className="h-4 w-4" />
-            </Button>
-          </div>
-        ) : (
-          <div className="text-center py-4">
-            <p className="text-sm text-muted-foreground mb-2">音声入力機能</p>
-            <Button variant="outline" className="rounded-xl" disabled>
-              <Mic className="h-4 w-4 mr-2" />
-              録音開始（準備中）
-            </Button>
-          </div>
-        )}
+        {/* 自動スクロール用の要素 */}
+        <div ref={messagesEndRef} />
       </div>
     </div>
   );

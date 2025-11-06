@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
     // Save to dialogue_turns table (ユーザー発言として保存)
     try {
       const { getNextOrderIndex } = await import('@/lib/db/dialogue');
-      const { updateDailySummaryText } = await import('@/lib/db/dailySummary');
+      // transcription_textは使用しないため、updateDailySummaryTextは呼び出さない
 
       const date = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
       console.log('Getting next order index for date:', date);
@@ -111,10 +111,7 @@ export async function POST(request: NextRequest) {
 
       console.log('Dialogue turn saved:', dialogueTurn.id);
 
-      // daily_summariesのtranscription_textを更新
-      console.log('Updating daily summary text...');
-      await updateDailySummaryText(user.id, date);
-      console.log('Daily summary text updated');
+      // transcription_textは使用しないため、daily_summariesの更新は不要
 
     } catch (dbSaveError) {
       console.error('Error in dialogue_turns save process:', dbSaveError);
