@@ -55,17 +55,32 @@ export async function POST(request: NextRequest) {
     // 2. 感情分析結果を取得（音声入力の場合のみ）
     let emotionData = null;
     if (recordingId) {
-      const { data: emotionResult, error: emotionError } = await supabase
-        .from('emotion_analysis_results')
-        .select('avg_arousal, avg_valence, avg_dominance, dominant_emotion')
+      // 新しいシステム: transcription_segmentsから取得
+      const { data: segments, error: segmentError } = await supabase
+        .from('transcription_segments')
+        .select('arousal, valence, dominance, emotion_label')
         .eq('recording_id', recordingId)
-        .single();
+        .order('segment_index', { ascending: true });
 
-      if (!emotionError && emotionResult) {
-        emotionData = emotionResult;
-        console.log('Emotion data:', emotionData);
+      if (!segmentError && segments && segments.length > 0) {
+        // 平均値を計算
+        const validSegments = segments.filter(s => s.arousal && s.valence && s.dominance);
+
+        if (validSegments.length > 0) {
+          const avgArousal = validSegments.reduce((sum, s) => sum + s.arousal, 0) / validSegments.length;
+          const avgValence = validSegments.reduce((sum, s) => sum + s.valence, 0) / validSegments.length;
+          const avgDominance = validSegments.reduce((sum, s) => sum + s.dominance, 0) / validSegments.length;
+
+          emotionData = {
+            avg_arousal: avgArousal,
+            avg_valence: avgValence,
+            avg_dominance: avgDominance,
+            dominant_emotion: validSegments[0]?.emotion_label || 'neutral'
+          };
+          console.log('Emotion data from segments:', emotionData);
+        }
       } else {
-        console.log('No emotion data found or error:', emotionError);
+        console.log('No emotion segments found or error:', segmentError);
       }
     }
 

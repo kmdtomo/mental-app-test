@@ -5,10 +5,12 @@ import {
   EmotionSummaryCard,
   DiaryTextCard,
   DialogueHistoryCard,
-  AIInsightsCard
+  AIInsightsCard,
+  TranscriptionSegmentsCard
 } from '@/features/diary-detail/components';
 import { ArrowLeft, Calendar } from 'lucide-react';
 import Link from 'next/link';
+import { TranscriptionSegment } from '@/types/database';
 
 interface DialogueTurn {
   role: 'user' | 'assistant';
@@ -36,10 +38,14 @@ interface DiaryDetailPageProps {
     ai_insights: string | null;
   } | null;
   dialogueTurns: DialogueTurn[];
+  transcriptionSegments: TranscriptionSegment[];
 }
 
-export function DiaryDetailPage({ user, date, summary, dialogueTurns }: DiaryDetailPageProps) {
+export function DiaryDetailPage({ user, date, summary, dialogueTurns, transcriptionSegments }: DiaryDetailPageProps) {
   // transcription_textは使用しない - formatted_textのみを日記の要約として表示
+  console.log(`[DiaryDetailPage] Rendering for date: ${date}`);
+  console.log(`[DiaryDetailPage] Transcription segments count: ${transcriptionSegments?.length || 0}`);
+  console.log(`[DiaryDetailPage] Segments:`, transcriptionSegments);
 
   if (!summary) {
     return (
@@ -107,6 +113,9 @@ export function DiaryDetailPage({ user, date, summary, dialogueTurns }: DiaryDet
             formattedText={summary.formatted_text ? summary.formatted_text : undefined}
             date={date}
           />
+
+          {/* 感情付き文字起こし（新機能） */}
+          <TranscriptionSegmentsCard segments={transcriptionSegments} />
 
           {/* AI対話履歴 */}
           <DialogueHistoryCard turns={dialogueTurns} />

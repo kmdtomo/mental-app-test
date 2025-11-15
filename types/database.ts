@@ -48,6 +48,23 @@ export interface EmotionAnalysisResult {
   updated_at: string;
 }
 
+// 新規: Whisperセグメント単位の文字起こしと感情データ
+export interface TranscriptionSegment {
+  id: string;
+  user_id: string;
+  recording_id: string;
+  segment_index: number;
+  text: string;
+  start_time: number;  // 秒
+  end_time: number;    // 秒
+  arousal: number | null;
+  valence: number | null;
+  dominance: number | null;
+  emotion_label: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface AIMessage {
   role: 'user' | 'assistant';
   content: string;

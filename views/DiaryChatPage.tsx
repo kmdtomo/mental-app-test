@@ -55,65 +55,65 @@ export function DiaryChatPage({ user, recordingLimit }: DiaryChatPageProps) {
       const { uploadAudio } = await import('@/features/voice-diary/actions/uploadAudio');
       const uploadResult = await uploadAudio(blob);
 
-      // 2. Call Whisper API and Emotion Analysis in parallel
-      const [whisperResponse, emotionResponse] = await Promise.all([
-        fetch('/api/whisper', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            recordingId: uploadResult.recordingId,
-            filePath: uploadResult.filePath,
-            duration: duration,
-          }),
+      // 2. Call NEW Whisper Segmented API (句読点分割)
+      const whisperResponse = await fetch('/api/whisper-segmented', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          recordingId: uploadResult.recordingId,
+          filePath: uploadResult.filePath,
         }),
-        fetch('/api/analyze-emotion', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            recordingId: uploadResult.recordingId,
-            filePath: uploadResult.filePath,
-          }),
-        })
-      ]);
+      });
 
       if (!whisperResponse.ok) {
-        throw new Error('Whisper API failed');
+        throw new Error('Whisper Segmented API failed');
       }
 
       const whisperData = await whisperResponse.json();
+
+      // 3. Call NEW Emotion Analysis Segmented API (セグメント単位)
+      const emotionResponse = await fetch('/api/analyze-emotion-segmented', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          recordingId: uploadResult.recordingId,
+          filePath: uploadResult.filePath,
+        }),
+      });
+
       const emotionData = emotionResponse.ok ? await emotionResponse.json() : null;
 
-      // 3. ユーザーメッセージをUIに追加（文字起こし + 感情データ）
+      // 4. ユーザーメッセージをUIに追加（文字起こし + 感情データ）
       const userMessage: ChatMessage = {
         role: 'user',
-        content: whisperData.originalText,
+        content: whisperData.text, // whisper-segmentedはtextを返す
         timestamp: new Date().toISOString(),
-        emotionData: emotionData?.emotion ? {
-          segments: emotionData.emotion.segments,
-          total_segments: emotionData.emotion.summary?.total_segments || emotionData.emotion.segments?.length || 0,
-          avg_arousal: emotionData.emotion.summary?.avg_arousal || 0,
-          avg_valence: emotionData.emotion.summary?.avg_valence || 0,
-          avg_dominance: emotionData.emotion.summary?.avg_dominance || 0
+        emotionData: emotionData?.segments ? {
+          segments: emotionData.segments,
+          total_segments: emotionData.totalSegments || 0,
+          avg_arousal: 0, // セグメント単位なので平均値は後で計算可能
+          avg_valence: 0,
+          avg_dominance: 0
         } : undefined
       };
 
       setMessages(prev => [...prev, userMessage]);
 
-      // 4. AIが考え中のローディング表示を開始
-      // 注: ユーザーメッセージは既にWhisper APIがdialogue_turnsに保存済み
+      // 5. AIが考え中のローディング表示を開始
+      // 注: ユーザーメッセージは既にWhisper Segmented APIがdialogue_turnsに保存済み
       setLoadingMessage('AIが考えています...');
       setIsLoading(true);
 
-      // 5. AI応答生成
+      // 6. AI応答生成
       console.log('Calling AI Chat API...');
       const aiResponse = await fetch('/api/ai-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          userMessage: whisperData.originalText,
+          userMessage: whisperData.text,
           recordingId: uploadResult.recordingId,
         }),
       });

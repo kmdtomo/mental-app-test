@@ -36,6 +36,25 @@ export default async function DiaryDetail({ params }: { params: { date: string }
     .eq('date', params.date)
     .order('order_index', { ascending: true });
 
+  // その日の文字起こしセグメントを取得（新機能）
+  // recording_idのリストを取得
+  const recordingIds = rawTurns?.filter(t => t.recording_id).map(t => t.recording_id!) || [];
+
+  let transcriptionSegments: any[] = [];
+  if (recordingIds.length > 0) {
+    const { data } = await supabase
+      .from('transcription_segments')
+      .select('*')
+      .eq('user_id', user.id)
+      .in('recording_id', recordingIds)
+      .order('recording_id', { ascending: true })
+      .order('segment_index', { ascending: true });
+
+    transcriptionSegments = data || [];
+  }
+
+  console.log(`[Diary ${params.date}] Found ${transcriptionSegments.length} transcription segments for ${recordingIds.length} recordings`);
+
   // 各ターンの感情データを個別に取得
   const dialogueTurns = await Promise.all(
     rawTurns?.map(async (turn) => {
@@ -68,6 +87,7 @@ export default async function DiaryDetail({ params }: { params: { date: string }
       date={params.date}
       summary={summary}
       dialogueTurns={dialogueTurns || []}
+      transcriptionSegments={transcriptionSegments || []}
     />
   );
 }
