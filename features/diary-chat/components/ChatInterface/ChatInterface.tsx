@@ -5,8 +5,19 @@ import { ChevronDown, ChevronUp, Mic } from 'lucide-react';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
-  content: string;
+  content: string;  // AIメッセージやテキスト入力用（互換性のため残す）
   timestamp: string;
+  // 音声入力の場合、セグメントデータを使用
+  segments?: Array<{
+    id: string;
+    text: string;
+    start_time: number;
+    end_time: number;
+    emotion_label: string | null;
+    arousal: number | null;
+    valence: number | null;
+    dominance: number | null;
+  }>;
   emotionData?: {
     segments: any[];
     total_segments: number;
@@ -39,6 +50,31 @@ export function ChatInterface({ messages, isLoading = false, loadingMessage = 'A
       newExpanded.add(index);
     }
     setExpandedMessages(newExpanded);
+  };
+
+  // 感情ラベルから色を取得
+  const getEmotionColor = (emotionLabel: string | null): string => {
+    if (!emotionLabel) return '';
+
+    const label = emotionLabel.toLowerCase();
+
+    if (label.includes('喜び') || label.includes('興奮') || label.includes('満足')) {
+      return 'text-yellow-400';
+    }
+    if (label.includes('悲し') || label.includes('疲労') || label.includes('疲れ')) {
+      return 'text-blue-400';
+    }
+    if (label.includes('ストレス') || label.includes('緊張')) {
+      return 'text-red-400';
+    }
+    if (label.includes('落ち込') || label.includes('沈')) {
+      return 'text-purple-400';
+    }
+    if (label.includes('穏やか') || label.includes('リラックス')) {
+      return 'text-green-400';
+    }
+
+    return ''; // 中立は色なし（デフォルトの白）
   };
 
   const vadToEmotion = (arousal: number, valence: number, dominance: number): string => {
@@ -97,11 +133,26 @@ export function ChatInterface({ messages, isLoading = false, loadingMessage = 'A
               <div
                 className={`max-w-[85%] rounded-2xl px-4 py-3 ${
                   message.role === 'user'
-                    ? 'bg-primary text-primary-foreground'
+                    ? 'bg-orange-50 dark:bg-orange-950/20 text-foreground'
                     : 'bg-muted'
                 }`}
               >
-                <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+                {/* セグメントがある場合は色分けして表示 */}
+                {message.segments && message.segments.length > 0 ? (
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed">
+                    {message.segments.map((segment, idx) => (
+                      <span
+                        key={segment.id}
+                        className={getEmotionColor(segment.emotion_label)}
+                        title={segment.emotion_label || '中立'}
+                      >
+                        {segment.text}
+                      </span>
+                    ))}
+                  </p>
+                ) : (
+                  <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+                )}
 
                 <div className="flex items-center gap-2 mt-2">
                   <span className="text-xs opacity-70">
@@ -116,7 +167,7 @@ export function ChatInterface({ messages, isLoading = false, loadingMessage = 'A
                 </div>
 
                 {/* 感情データがある場合は詳細表示ボタン */}
-                {message.role === 'user' && message.emotionData && (
+                {message.role === 'user' && message.segments && message.segments.length > 0 && (
                   <div className="mt-3 pt-3 border-t border-white/20">
                     <button
                       onClick={() => toggleExpand(index)}
@@ -137,33 +188,67 @@ export function ChatInterface({ messages, isLoading = false, loadingMessage = 'A
 
                     {isExpanded && (
                       <div className="mt-3 space-y-2 text-xs">
-                        {/* 総評 */}
-                        <div className="p-3 rounded-lg bg-black/10 dark:bg-white/10">
-                          <p className="font-semibold mb-2">
-                            {vadToEmotion(
-                              message.emotionData.avg_arousal,
-                              message.emotionData.avg_valence,
-                              message.emotionData.avg_dominance
-                            )}
-                          </p>
-                          <div className="grid grid-cols-3 gap-2">
-                            <div>
-                              <span className="opacity-70">覚醒度:</span>
-                              <p className="font-mono">{message.emotionData.avg_arousal.toFixed(2)}</p>
+                        {/* セグメントごとの感情分析 */}
+                        {message.segments.map((segment, idx) => (
+                          <div key={segment.id} className="p-3 rounded-lg bg-black/10 dark:bg-white/10">
+                            <p className="font-semibold mb-2 text-sm">
+                              {segment.text}
+                            </p>
+                            <div className="grid grid-cols-3 gap-2">
+                              <div>
+                                <span className="opacity-70">覚醒度:</span>
+                                <p className="font-mono">
+                                  {segment.arousal !== null ? segment.arousal.toFixed(2) : 'N/A'}
+                                </p>
+                              </div>
+                              <div>
+                                <span className="opacity-70">快度:</span>
+                                <p className="font-mono">
+                                  {segment.valence !== null ? segment.valence.toFixed(2) : 'N/A'}
+                                </p>
+                              </div>
+                              <div>
+                                <span className="opacity-70">優位性:</span>
+                                <p className="font-mono">
+                                  {segment.dominance !== null ? segment.dominance.toFixed(2) : 'N/A'}
+                                </p>
+                              </div>
                             </div>
-                            <div>
-                              <span className="opacity-70">快度:</span>
-                              <p className="font-mono">{message.emotionData.avg_valence.toFixed(2)}</p>
-                            </div>
-                            <div>
-                              <span className="opacity-70">優位性:</span>
-                              <p className="font-mono">{message.emotionData.avg_dominance.toFixed(2)}</p>
-                            </div>
+                            <p className="mt-2 opacity-70">
+                              感情: {segment.emotion_label || '中立'}
+                            </p>
                           </div>
-                          <p className="mt-2 opacity-70">
-                            {message.emotionData.total_segments}個の発話区間を検出
-                          </p>
-                        </div>
+                        ))}
+
+                        {/* 全体の統計 */}
+                        {message.emotionData && (
+                          <div className="p-3 rounded-lg bg-black/20 dark:bg-white/20 border-t border-white/30">
+                            <p className="font-semibold mb-2">
+                              全体の傾向: {vadToEmotion(
+                                message.emotionData.avg_arousal,
+                                message.emotionData.avg_valence,
+                                message.emotionData.avg_dominance
+                              )}
+                            </p>
+                            <div className="grid grid-cols-3 gap-2">
+                              <div>
+                                <span className="opacity-70">平均覚醒度:</span>
+                                <p className="font-mono">{message.emotionData.avg_arousal.toFixed(2)}</p>
+                              </div>
+                              <div>
+                                <span className="opacity-70">平均快度:</span>
+                                <p className="font-mono">{message.emotionData.avg_valence.toFixed(2)}</p>
+                              </div>
+                              <div>
+                                <span className="opacity-70">平均優位性:</span>
+                                <p className="font-mono">{message.emotionData.avg_dominance.toFixed(2)}</p>
+                              </div>
+                            </div>
+                            <p className="mt-2 opacity-70">
+                              {message.emotionData.total_segments}個の発話区間を検出
+                            </p>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

@@ -54,16 +54,19 @@ export async function POST(request: NextRequest) {
 
     // 2. 感情分析結果を取得（音声入力の場合のみ）
     let emotionData = null;
+    let segmentDetails = null;
     if (recordingId) {
-      // 新しいシステム: transcription_segmentsから取得
+      // 新しいシステム: transcription_segmentsから詳細データを取得
       const { data: segments, error: segmentError } = await supabase
         .from('transcription_segments')
-        .select('arousal, valence, dominance, emotion_label')
+        .select('text, start_time, end_time, arousal, valence, dominance, emotion_label, segment_index')
         .eq('recording_id', recordingId)
         .order('segment_index', { ascending: true });
 
       if (!segmentError && segments && segments.length > 0) {
-        // 平均値を計算
+        segmentDetails = segments;
+
+        // 平均値を計算（全体傾向用）
         const validSegments = segments.filter(s => s.arousal && s.valence && s.dominance);
 
         if (validSegments.length > 0) {
@@ -78,6 +81,7 @@ export async function POST(request: NextRequest) {
             dominant_emotion: validSegments[0]?.emotion_label || 'neutral'
           };
           console.log('Emotion data from segments:', emotionData);
+          console.log('Segment details count:', segmentDetails.length);
         }
       } else {
         console.log('No emotion segments found or error:', segmentError);
@@ -87,7 +91,7 @@ export async function POST(request: NextRequest) {
     // 3. プロンプト生成（初回か2回目以降かで変える）
     const isInitialMessage = !dialogueHistory || dialogueHistory.length === 0;
     const systemPrompt = generateSystemPrompt(isInitialMessage);
-    const userPrompt = generateUserPrompt(userMessage, emotionData, isInitialMessage);
+    const userPrompt = generateUserPrompt(userMessage, emotionData, segmentDetails, isInitialMessage);
 
     console.log('Is initial message:', isInitialMessage);
     console.log('System prompt:', systemPrompt);
@@ -198,6 +202,25 @@ function generateSystemPrompt(isInitialMessage: boolean): string {
 }
 
 /**
+ * セグメント情報を整形してプロンプトに含める
+ */
+function formatSegmentDetails(segments: any[]): string {
+  let formattedSegments = '';
+
+  segments.forEach((seg, idx) => {
+    const segNum = idx + 1;
+    const emotionLabel = seg.emotion_label || '中立';
+    const arousal = seg.arousal?.toFixed(2) || 'N/A';
+    const valence = seg.valence?.toFixed(2) || 'N/A';
+
+    formattedSegments += `セグメント${segNum}: "${seg.text}"\n`;
+    formattedSegments += `→ ${emotionLabel} (覚醒度: ${arousal}, 快度: ${valence})\n\n`;
+  });
+
+  return formattedSegments;
+}
+
+/**
  * ユーザープロンプト生成（感情ベース）
  */
 function generateUserPrompt(
@@ -208,21 +231,25 @@ function generateUserPrompt(
     avg_dominance: number;
     dominant_emotion: string;
   } | null,
+  segmentDetails: any[] | null,
   isInitialMessage: boolean
 ): string {
   // 2回目以降は簡潔なプロンプト（会話履歴が既にある）
   if (!isInitialMessage) {
-    if (emotionData) {
-      const emotionAnalysis = analyzeVADEmotion(emotionData);
+    if (emotionData && segmentDetails && segmentDetails.length > 0) {
+      const formattedSegments = formatSegmentDetails(segmentDetails);
 
       return `【ユーザーの最新の発言】
 "${userMessage}"
 
-【音声分析】
-覚醒度: ${emotionData.avg_arousal.toFixed(2)}, 快度: ${emotionData.avg_valence.toFixed(2)}, 優位性: ${emotionData.avg_dominance.toFixed(2)}
-感情: ${emotionAnalysis.emotionLabel}
+【音声分析（セグメント別）】
+${formattedSegments}
+【全体】平均: 覚醒度 ${emotionData.avg_arousal.toFixed(2)}, 快度 ${emotionData.avg_valence.toFixed(2)}
 
-これまでの会話を踏まえて、自然に対話を続けてください。`;
+【指示】
+セグメント別の感情分析を参考に、特に感情が表れている部分（中立以外）に注目して質問してください。
+テキストの内容と感情を組み合わせて、ユーザーの本音を引き出してください。
+これまでの会話の流れも踏まえて、自然に対話を続けてください。`;
     }
 
     return `【ユーザーの最新の発言】
@@ -235,63 +262,20 @@ function generateUserPrompt(
   // 文章から感情を判定
   const hasEmotionInText = detectEmotionInText(userMessage);
 
-  // 音声データがある場合は常に両方を提示
-  if (emotionData) {
-    const emotionAnalysis = analyzeVADEmotion(emotionData);
+  // 音声データがある場合は、セグメント詳細を含めて提示
+  if (emotionData && segmentDetails && segmentDetails.length > 0) {
+    const formattedSegments = formatSegmentDetails(segmentDetails);
 
-    // 文章と音声の両方に感情がある場合
-    if (hasEmotionInText && emotionAnalysis.hasSignificantEmotion) {
-      return `【ユーザーの発言】
+    return `【ユーザーの発言】
 "${userMessage}"
 
-【音声分析結果】
-- 覚醒度: ${emotionData.avg_arousal.toFixed(2)} / 5.0
-- 快度: ${emotionData.avg_valence.toFixed(2)} / 5.0
-- 優位性: ${emotionData.avg_dominance.toFixed(2)} / 5.0
-- 検出された感情: ${emotionAnalysis.emotionLabel}
+【音声分析（セグメント別）】
+${formattedSegments}
+【全体】平均: 覚醒度 ${emotionData.avg_arousal.toFixed(2)}, 快度 ${emotionData.avg_valence.toFixed(2)}
 
-【観察】
-発言内容には感情表現が含まれており、音声トーンからも${emotionAnalysis.description}が感じられます。
-
-【あなたの役割】
-文章の内容と音声分析データの両方を考慮して、ユーザーの感情をより深く理解し、本音を引き出してください。`;
-    }
-
-    // 文章は感情的だが、音声は中立的
-    if (hasEmotionInText && !emotionAnalysis.hasSignificantEmotion) {
-      return `【ユーザーの発言】
-"${userMessage}"
-
-【音声分析結果】
-- 覚醒度: ${emotionData.avg_arousal.toFixed(2)} / 5.0
-- 快度: ${emotionData.avg_valence.toFixed(2)} / 5.0
-- 優位性: ${emotionData.avg_dominance.toFixed(2)} / 5.0
-- 検出された感情: ${emotionAnalysis.emotionLabel}
-
-【観察】
-発言内容には感情表現が含まれていますが、音声トーンは比較的落ち着いています。
-
-【あなたの役割】
-言葉では感情を表現していても、声のトーンが落ち着いている理由を探ってください。もしかすると、表面的な感情と内面の気持ちにギャップがあるかもしれません。`;
-    }
-
-    // 文章は中立的だが、音声に感情がある
-    if (!hasEmotionInText && emotionAnalysis.hasSignificantEmotion) {
-      return `【ユーザーの発言】
-"${userMessage}"
-
-【音声分析結果】
-- 覚醒度: ${emotionData.avg_arousal.toFixed(2)} / 5.0
-- 快度: ${emotionData.avg_valence.toFixed(2)} / 5.0
-- 優位性: ${emotionData.avg_dominance.toFixed(2)} / 5.0
-- 検出された感情: ${emotionAnalysis.emotionLabel}
-
-【観察】
-発言は事実の記述のみですが、音声トーンからは${emotionAnalysis.description}が感じられます。
-
-【あなたの役割】
-言葉にしていない感情が声に表れています。特に「${emotionAnalysis.emotionLabel}」の兆候が見られるため、優しく寄り添いながら、その感情について話せるように導いてください。`;
-    }
+【指示】
+セグメント別の感情分析を参考に、特に感情が表れている部分（中立以外）に注目して質問してください。
+テキストの内容と感情を組み合わせて、ユーザーの本音を引き出してください。`;
   }
 
   // 音声データがない、または両方とも中立的

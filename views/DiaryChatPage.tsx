@@ -85,28 +85,56 @@ export function DiaryChatPage({ user, recordingLimit }: DiaryChatPageProps) {
 
       const emotionData = emotionResponse.ok ? await emotionResponse.json() : null;
 
-      // 4. ユーザーメッセージをUIに追加（文字起こし + 感情データ）
+      // 4. transcription_segmentsからセグメントデータを取得
+      const { createClient } = await import('@/lib/supabase/client');
+      const supabase = createClient();
+
+      const { data: transcriptionSegments } = await supabase
+        .from('transcription_segments')
+        .select('id, text, start_time, end_time, emotion_label, arousal, valence, dominance')
+        .eq('recording_id', uploadResult.recordingId)
+        .order('segment_index', { ascending: true });
+
+      // 5. 平均VAD値を計算
+      let avgArousal = 0;
+      let avgValence = 0;
+      let avgDominance = 0;
+
+      if (transcriptionSegments && transcriptionSegments.length > 0) {
+        const validSegments = transcriptionSegments.filter(
+          s => s.arousal !== null && s.valence !== null && s.dominance !== null
+        );
+
+        if (validSegments.length > 0) {
+          avgArousal = validSegments.reduce((sum, s) => sum + s.arousal!, 0) / validSegments.length;
+          avgValence = validSegments.reduce((sum, s) => sum + s.valence!, 0) / validSegments.length;
+          avgDominance = validSegments.reduce((sum, s) => sum + s.dominance!, 0) / validSegments.length;
+        }
+      }
+
+      // 6. ユーザーメッセージをUIに追加（セグメントデータ付き）
       const userMessage: ChatMessage = {
         role: 'user',
-        content: whisperData.text, // whisper-segmentedはtextを返す
+        content: whisperData.text, // フォールバック用
         timestamp: new Date().toISOString(),
-        emotionData: emotionData?.segments ? {
-          segments: emotionData.segments,
-          total_segments: emotionData.totalSegments || 0,
-          avg_arousal: 0, // セグメント単位なので平均値は後で計算可能
-          avg_valence: 0,
-          avg_dominance: 0
+        segments: transcriptionSegments || undefined,
+        emotionData: transcriptionSegments && transcriptionSegments.length > 0 ? {
+          segments: transcriptionSegments,
+          total_segments: transcriptionSegments.length,
+          avg_arousal: avgArousal,
+          avg_valence: avgValence,
+          avg_dominance: avgDominance
         } : undefined
       };
 
       setMessages(prev => [...prev, userMessage]);
 
-      // 5. AIが考え中のローディング表示を開始
+      // 7. AIが考え中のローディング表示を開始
       // 注: ユーザーメッセージは既にWhisper Segmented APIがdialogue_turnsに保存済み
       setLoadingMessage('AIが考えています...');
       setIsLoading(true);
 
-      // 6. AI応答生成
+      // 8. AI応答生成
       console.log('Calling AI Chat API...');
       const aiResponse = await fetch('/api/ai-chat', {
         method: 'POST',
@@ -125,7 +153,7 @@ export function DiaryChatPage({ user, recordingLimit }: DiaryChatPageProps) {
       const aiData = await aiResponse.json();
       console.log('AI response:', aiData);
 
-      // 6. AI応答をチャットに追加（DBへの保存はAPI内で実施済み）
+      // 9. AI応答をチャットに追加（DBへの保存はAPI内で実施済み）
       const aiMessage: ChatMessage = {
         role: 'assistant',
         content: aiData.response,
