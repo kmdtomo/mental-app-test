@@ -1,13 +1,11 @@
 'use client';
 
 import { UserHeader } from '@/features/voice-diary/components/UserHeader';
-import {
-  EmotionSummaryCard,
-  DiaryTextCard,
-  DialogueHistoryCard,
-  AIInsightsCard,
-  TranscriptionSegmentsCard
-} from '@/features/diary-detail/components';
+import { EmotionSummaryCard } from '@/features/diary-detail/components/EmotionSummaryCard';
+import { DiaryTextCard } from '@/features/diary-detail/components/DiaryTextCard';
+import { DialogueHistoryCard } from '@/features/diary-detail/components/DialogueHistoryCard';
+import { AIInsightsCard } from '@/features/diary-detail/components/AIInsightsCard';
+import { TranscriptionSegmentsCard } from '@/features/diary-detail/components/TranscriptionSegmentsCard';
 import { ArrowLeft, Calendar } from 'lucide-react';
 import Link from 'next/link';
 import { TranscriptionSegment } from '@/types/database';
@@ -102,10 +100,10 @@ export function DiaryDetailPage({ user, date, summary, dialogueTurns, transcript
 
           {/* 感情分析 */}
           <EmotionSummaryCard
-            avgArousal={summary.avg_arousal}
-            avgValence={summary.avg_valence}
-            avgDominance={summary.avg_dominance}
-            aiInsights={summary.ai_insights}
+            avgArousal={summary.avg_arousal ?? null}
+            avgValence={summary.avg_valence ?? null}
+            avgDominance={summary.avg_dominance ?? null}
+            aiInsights={summary.ai_insights ?? null}
           />
 
           {/* 日記テキスト */}

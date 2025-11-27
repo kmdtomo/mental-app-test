@@ -3,7 +3,7 @@
 import { Card } from '@/components/ui/Card';
 import { Heart } from 'lucide-react';
 
-interface EmotionSummaryCardProps {
+export interface EmotionSummaryCardProps {
   avgArousal: number | null;
   avgValence: number | null;
   avgDominance: number | null;

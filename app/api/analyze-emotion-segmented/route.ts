@@ -5,6 +5,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { getEmotionFromVAD } from '@/lib/emotionLabeling';
 
 const execAsync = promisify(exec);
 
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
     const tempDir = '/tmp';
     const tempWavPath = path.join(tempDir, `audio_${recordingId}.wav`);
 
-    await fs.writeFile(tempWavPath, buffer);
+    await fs.writeFile(tempWavPath, new Uint8Array(buffer));
     console.log(`Saved audio file: ${tempWavPath}`);
 
     // 3. 各セグメントを並列分析
@@ -72,7 +73,7 @@ export async function POST(request: NextRequest) {
         const cutCommand = `ffmpeg -i ${tempWavPath} -ss ${segment.start_time} -to ${segment.end_time} -ar 16000 -ac 1 -y ${segmentWavPath}`;
         console.log(`[Segment ${segment.segment_index}] FFmpeg command: ${cutCommand}`);
 
-        const cutResult = await execAsync(cutCommand);
+        await execAsync(cutCommand);
 
         // 切り出されたファイルの情報を確認
         const fileStats = await fs.stat(segmentWavPath);
@@ -128,13 +129,13 @@ finally:
 
         // JSONパース
         const lines = stdout.split('\n').filter(line => line.trim());
-        let emotionResult = null;
+        let pythonResult = null;
 
         for (let i = lines.length - 1; i >= 0; i--) {
           const line = lines[i];
           if (line.startsWith('{')) {
             try {
-              emotionResult = JSON.parse(line);
+              pythonResult = JSON.parse(line);
               break;
             } catch (e) {
               continue;
@@ -142,21 +143,22 @@ finally:
           }
         }
 
-        if (!emotionResult || emotionResult.error) {
-          console.error(`[Segment ${segment.segment_index}] Analysis failed:`, emotionResult?.error);
+        if (!pythonResult || pythonResult.error) {
+          console.error(`[Segment ${segment.segment_index}] Analysis failed:`, pythonResult?.error);
           return null;
         }
 
         // PythonからはsummaryにVAD値が入っているので取り出す
-        const arousal = emotionResult.avg_arousal;
-        const valence = emotionResult.avg_valence;
-        const dominance = emotionResult.avg_dominance;
+        const arousal = pythonResult.avg_arousal;
+        const valence = pythonResult.avg_valence;
+        const dominance = pythonResult.avg_dominance;
 
         // VAD値を詳細にログ
         console.log(`[Segment ${segment.segment_index}] VAD values - Arousal: ${arousal}, Valence: ${valence}, Dominance: ${dominance}`);
 
-        // VAD値から感情ラベルを判定
-        const emotionLabel = getEmotionLabel(arousal, valence, dominance);
+        // VAD値から感情ラベルを判定（統一関数を使用）
+        const emotionResult = getEmotionFromVAD(arousal, valence, dominance);
+        const emotionLabel = emotionResult.label;
 
         console.log(`[Segment ${segment.segment_index}] Emotion label: ${emotionLabel}`);
 
@@ -225,57 +227,4 @@ finally:
   }
 }
 
-/**
- * VAD値から感情ラベルを判定（既存ロジックと同じ）
- */
-function getEmotionLabel(arousal: number, valence: number, dominance: number): string {
-  // 中立範囲
-  const isNeutralValence = valence >= 3.7 && valence <= 4.3;
-  const isNeutralArousal = arousal >= 3.7 && arousal <= 4.3;
-
-  if (isNeutralValence && isNeutralArousal) {
-    return '中立';
-  }
-
-  // 悲しみ・疲労（低覚醒・低快度）
-  if (arousal <= 3.3 && valence <= 3.8) {
-    return '悲しみ・疲労';
-  }
-
-  // ストレス・緊張（高覚醒・低快度）
-  if (arousal >= 3.8 && valence <= 3.7) {
-    return 'ストレス・緊張';
-  }
-
-  // 喜び・興奮（高覚醒・高快度）
-  if (arousal >= 3.8 && valence >= 4.2) {
-    return '喜び・興奮';
-  }
-
-  // 穏やか・リラックス（低覚醒・高快度）
-  if (arousal <= 3.3 && valence >= 4.2) {
-    return '穏やか';
-  }
-
-  // 快度が低め（疲れ・落ち込み傾向）
-  if (valence < 4.0 && arousal <= 3.5) {
-    return '疲労';
-  }
-
-  // 快度が低い（一般的なネガティブ傾向）
-  if (valence < 3.7) {
-    return '落ち込み';
-  }
-
-  // 快度が高い場合
-  if (valence >= 4.3) {
-    return '満足';
-  }
-
-  // 覚醒度が低い（エネルギー低下）
-  if (arousal < 3.5) {
-    return '疲労';
-  }
-
-  return '中立';
-}
+// getEmotionLabel関数は削除（lib/emotionLabeling.tsの統一関数を使用）

@@ -10,8 +10,75 @@ const openai = new OpenAI({
 });
 
 /**
- * 新しいWhisper API（セグメント単位）
- * Whisperのセグメント分割を使用してtranscription_segmentsに保存
+ * GPT-4o-miniで句読点を付与する（高速化のため短いプロンプト）
+ */
+async function addPunctuation(text: string): Promise<string> {
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [{
+        role: 'user',
+        content: `以下のテキストに句読点（。、）を付けてください。文の内容は変更せず、句読点のみ追加。
+
+${text}
+
+出力: 句読点を付けたテキストのみ`
+      }],
+      temperature: 0,
+      max_tokens: 2000,
+    });
+
+    return response.choices[0].message.content?.trim() || text;
+  } catch (error) {
+    console.error('Punctuation error:', error);
+    return text; // エラー時は元のテキストを返す
+  }
+}
+
+/**
+ * 句読点で分割した文に対応する単語のタイムスタンプを探す
+ */
+function mapSentencesToWords(sentences: string[], words: any[]) {
+  const segments = [];
+  let wordIndex = 0;
+
+  for (const sentence of sentences) {
+    const cleanSentence = sentence.replace(/[。、]/g, '').trim();
+    if (!cleanSentence) continue;
+
+    const segmentWords = [];
+    let currentText = '';
+
+    // この文に含まれる単語を探す
+    while (wordIndex < words.length) {
+      const word = words[wordIndex];
+      const wordText = word.word || '';
+
+      segmentWords.push(word);
+      currentText += wordText;
+      wordIndex++;
+
+      // 文の終わりに到達したかチェック
+      if (currentText.length >= cleanSentence.length) {
+        break;
+      }
+    }
+
+    if (segmentWords.length > 0) {
+      segments.push({
+        text: sentence.trim(),
+        start: segmentWords[0].start,
+        end: segmentWords[segmentWords.length - 1].end,
+      });
+    }
+  }
+
+  return segments;
+}
+
+/**
+ * 新しいWhisper API（単語レベル + GPT句読点）
+ * 単語レベルのタイムスタンプを取得し、GPTで句読点を付けて文単位に分割
  */
 export async function POST(request: NextRequest) {
   console.log('=== Whisper Segmented API Called ===');
@@ -49,9 +116,10 @@ export async function POST(request: NextRequest) {
     // Convert Blob to File for OpenAI
     const audioFile = new File([fileData], 'audio.webm', { type: 'audio/webm' });
 
-    // Call Whisper API with segment-level timestamps
-    console.log('Calling Whisper API with segment-level timestamps...');
-    let transcription;
+    // Call Whisper API with word-level timestamps
+    console.log('Calling Whisper API with word-level timestamps...');
+    const startWhisper = Date.now();
+    let transcription: any = null;
     let retryCount = 0;
     const maxRetries = 3;
 
@@ -61,8 +129,8 @@ export async function POST(request: NextRequest) {
           file: audioFile,
           model: 'whisper-1',
           language: 'ja',
-          response_format: 'verbose_json',  // タイムスタンプ付き
-          timestamp_granularities: ['segment'],  // セグメント単位（Whisperの自動分割）
+          response_format: 'verbose_json',
+          timestamp_granularities: ['word'],  // 単語レベルに変更
         });
         break;
       } catch (error) {
@@ -79,11 +147,38 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log('Transcription completed with segments:', transcription.segments?.length || 0);
+    if (!transcription) {
+      console.error('Transcription failed after retries');
+      return NextResponse.json({ error: 'Transcription failed' }, { status: 500 });
+    }
 
-    // Whisperのセグメントをそのまま使用
-    const segments = transcription.segments || [];
-    console.log(`Using ${segments.length} segments from Whisper`);
+    const whisperTime = Date.now() - startWhisper;
+    console.log(`Whisper completed in ${whisperTime}ms with ${transcription.words?.length || 0} words`);
+
+    const fullText = transcription.text || '';
+    const words = transcription.words || [];
+
+    if (words.length === 0) {
+      console.error('No words returned from Whisper');
+      return NextResponse.json({ error: 'No transcription available' }, { status: 500 });
+    }
+
+    // GPT-4o-miniで句読点を付与（並列処理の準備）
+    console.log('Adding punctuation with GPT-4o-mini...');
+    const startPunctuation = Date.now();
+    const punctuatedText = await addPunctuation(fullText);
+    const punctuationTime = Date.now() - startPunctuation;
+    console.log(`Punctuation completed in ${punctuationTime}ms`);
+    console.log('Punctuated text:', punctuatedText);
+
+    // 句読点で分割してセグメント生成（。と、の両方で分割）
+    const startMapping = Date.now();
+    const sentences = punctuatedText.split(/[。、]/).filter(s => s.trim());
+    const segments = mapSentencesToWords(sentences, words);
+    const mappingTime = Date.now() - startMapping;
+    console.log(`Mapping completed in ${mappingTime}ms: ${segments.length} segments created`);
+
+    console.log(`Total processing time: ${whisperTime + punctuationTime + mappingTime}ms`);
 
     // セグメントをDBに保存
     if (segments && segments.length > 0) {
@@ -109,11 +204,6 @@ export async function POST(request: NextRequest) {
       console.log(`Saved ${insertedSegments.length} segments to DB`);
     }
 
-    // 全文テキストも生成（既存の互換性のため）
-    const fullText = segments
-      ?.map((seg: any) => seg.text.trim())
-      .join('') || transcription.text || '';
-
     // dialogue_turnsにも保存（既存のフローとの互換性）
     const { getNextOrderIndex } = await import('@/lib/db/dialogue');
     const date = new Date().toISOString().split('T')[0];
@@ -125,7 +215,7 @@ export async function POST(request: NextRequest) {
         user_id: user.id,
         date: date,
         role: 'user',
-        content: fullText,
+        content: punctuatedText,  // 句読点付きの全文
         input_type: 'voice',
         recording_id: recordingId,
         order_index: orderIndex
@@ -133,9 +223,15 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      text: fullText,
+      text: punctuatedText,  // 句読点付きの全文
       segments: segments,
       segmentCount: segments.length,
+      performance: {
+        whisper: `${whisperTime}ms`,
+        punctuation: `${punctuationTime}ms`,
+        mapping: `${mappingTime}ms`,
+        total: `${whisperTime + punctuationTime + mappingTime}ms`
+      }
     });
   } catch (error) {
     console.error('Unexpected error:', error);

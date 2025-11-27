@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { cookies } from 'next/headers';
 import OpenAI from 'openai';
+import { getEmotionDescriptionForAI } from '@/lib/emotionLabeling';
 import { saveAIMessage } from '@/features/diary-chat/actions/chatActions';
 
 const openai = new OpenAI({
@@ -169,12 +170,16 @@ function generateSystemPrompt(isInitialMessage: boolean): string {
 4. **具体的な出来事を聞く**: 抽象的な質問ではなく、「今日の中で」「その時」など具体的な場面を聞く
 5. **選択肢を与える**: 「大変でしたか？」よりも「何か気になることはありましたか？それとも特に問題なく過ごせましたか？」
 
+${getEmotionDescriptionForAI()}
+
 【音声感情分析の活用方法】
-- 覚醒度が低い＋快度が低い → 疲労や落ち込みの可能性。エネルギーが下がっている理由を優しく探る
-- 覚醒度が高い＋快度が低い → ストレスや緊張の可能性。プレッシャーや不安を感じていないか確認
-- 覚醒度が高い＋快度が高い → ポジティブな興奮。良い出来事や嬉しかったことを引き出す
-- 覚醒度が低い＋快度が高い → 穏やかでリラックス。安心感や心地よさの源を聞く
-- 快度だけが低い → 感情的な負担がある可能性。何が心に引っかかっているか探る
+- 「喜び・楽しい」→ ポジティブな出来事や嬉しかったことを引き出す
+- 「穏やか・リラックス」→ 安心感や心地よさの源を聞く
+- 「ストレス・緊張」→ プレッシャーや緊張の原因を優しく探る（まだコントロール感がある状態）
+- 「不安・心配」→ 不安や心配事を聞き、圧倒されていないか確認
+- 「悲しみ」→ 落ち込みや悲しさの理由を丁寧に引き出す
+- 「疲労・無気力」→ エネルギーが下がっている理由を優しく探る
+- 「中立」→ 表面的には平穏でも、隠れた感情がないか探る
 
 【応答スタイル】
 - 2-3文で簡潔に（長くても4文まで）
@@ -212,9 +217,10 @@ function formatSegmentDetails(segments: any[]): string {
     const emotionLabel = seg.emotion_label || '中立';
     const arousal = seg.arousal?.toFixed(2) || 'N/A';
     const valence = seg.valence?.toFixed(2) || 'N/A';
+    const dominance = seg.dominance?.toFixed(2) || 'N/A';
 
     formattedSegments += `セグメント${segNum}: "${seg.text}"\n`;
-    formattedSegments += `→ ${emotionLabel} (覚醒度: ${arousal}, 快度: ${valence})\n\n`;
+    formattedSegments += `→ ${emotionLabel} (覚醒度: ${arousal}, 快度: ${valence}, 優位性: ${dominance})\n\n`;
   });
 
   return formattedSegments;
@@ -244,7 +250,7 @@ function generateUserPrompt(
 
 【音声分析（セグメント別）】
 ${formattedSegments}
-【全体】平均: 覚醒度 ${emotionData.avg_arousal.toFixed(2)}, 快度 ${emotionData.avg_valence.toFixed(2)}
+【全体】平均: 覚醒度 ${emotionData.avg_arousal.toFixed(2)}, 快度 ${emotionData.avg_valence.toFixed(2)}, 優位性 ${emotionData.avg_dominance.toFixed(2)}
 
 【指示】
 セグメント別の感情分析を参考に、特に感情が表れている部分（中立以外）に注目して質問してください。
@@ -271,7 +277,7 @@ ${formattedSegments}
 
 【音声分析（セグメント別）】
 ${formattedSegments}
-【全体】平均: 覚醒度 ${emotionData.avg_arousal.toFixed(2)}, 快度 ${emotionData.avg_valence.toFixed(2)}
+【全体】平均: 覚醒度 ${emotionData.avg_arousal.toFixed(2)}, 快度 ${emotionData.avg_valence.toFixed(2)}, 優位性 ${emotionData.avg_dominance.toFixed(2)}
 
 【指示】
 セグメント別の感情分析を参考に、特に感情が表れている部分（中立以外）に注目して質問してください。
@@ -317,109 +323,5 @@ function detectEmotionInText(text: string): boolean {
   return emotionKeywords.some(keyword => text.includes(keyword));
 }
 
-/**
- * VAD値から感情を分析
- */
-function analyzeVADEmotion(emotionData: {
-  avg_arousal: number;
-  avg_valence: number;
-  avg_dominance: number;
-}): {
-  hasSignificantEmotion: boolean;
-  description: string;
-  emotionLabel: string;
-} {
-  const { avg_arousal, avg_valence, avg_dominance } = emotionData;
-
-  // 中立範囲を狭める（より敏感に検出）
-  const isNeutralValence = avg_valence >= 3.7 && avg_valence <= 4.3;
-  const isNeutralArousal = avg_arousal >= 3.7 && avg_arousal <= 4.3;
-
-  // 完全に中立的な場合（かなり狭い範囲）
-  if (isNeutralValence && isNeutralArousal) {
-    return {
-      hasSignificantEmotion: false,
-      description: '特に感情的な変化が見られない中立的な状態',
-      emotionLabel: '中立'
-    };
-  }
-
-  // 悲しみ・疲労（低覚醒・低快度） - 閾値を緩和
-  if (avg_arousal <= 3.3 && avg_valence <= 3.8) {
-    return {
-      hasSignificantEmotion: true,
-      description: '元気がない様子、疲労感、エネルギーの低下',
-      emotionLabel: '悲しみ・疲労'
-    };
-  }
-
-  // ストレス・緊張（高覚醒・低快度）
-  if (avg_arousal >= 3.8 && avg_valence <= 3.7) {
-    return {
-      hasSignificantEmotion: true,
-      description: '緊張感、ストレス、不安の兆候',
-      emotionLabel: 'ストレス・緊張'
-    };
-  }
-
-  // 喜び・興奮（高覚醒・高快度）
-  if (avg_arousal >= 3.8 && avg_valence >= 4.2) {
-    return {
-      hasSignificantEmotion: true,
-      description: '明るさ、活気、ポジティブな興奮',
-      emotionLabel: '喜び・興奮'
-    };
-  }
-
-  // 穏やか・リラックス（低覚醒・高快度）
-  if (avg_arousal <= 3.3 && avg_valence >= 4.2) {
-    return {
-      hasSignificantEmotion: true,
-      description: '穏やかさ、リラックス、安心感',
-      emotionLabel: '穏やか'
-    };
-  }
-
-  // 快度が低め（疲れ・落ち込み傾向） - 閾値を4.0未満に引き上げ
-  if (avg_valence < 4.0 && avg_arousal <= 3.5) {
-    return {
-      hasSignificantEmotion: true,
-      description: '少し疲れている様子、やや元気がない',
-      emotionLabel: '疲労'
-    };
-  }
-
-  // 快度が低い（一般的なネガティブ傾向）
-  if (avg_valence < 3.7) {
-    return {
-      hasSignificantEmotion: true,
-      description: 'やや沈んだ様子、感情的な負担の可能性',
-      emotionLabel: '落ち込み'
-    };
-  }
-
-  // 快度が高い場合
-  if (avg_valence >= 4.3) {
-    return {
-      hasSignificantEmotion: true,
-      description: 'ポジティブな気分、満足感',
-      emotionLabel: '満足'
-    };
-  }
-
-  // 覚醒度が低い（エネルギー低下）
-  if (avg_arousal < 3.5) {
-    return {
-      hasSignificantEmotion: true,
-      description: 'エネルギーが低め、やや疲れている可能性',
-      emotionLabel: '疲労'
-    };
-  }
-
-  // その他の場合
-  return {
-    hasSignificantEmotion: false,
-    description: '特に顕著な感情的傾向は見られない状態',
-    emotionLabel: '中立'
-  };
-}
+// analyzeVADEmotion関数は削除（lib/emotionLabeling.tsの統一関数を使用）
+// 統一関数を使用するため、このファイル内でのVAD判定ロジックは不要
