@@ -116,6 +116,7 @@ export function DiaryChatPage({ user, recordingLimit }: DiaryChatPageProps) {
       const userMessage: ChatMessage = {
         role: 'user',
         content: whisperData.text, // フォールバック用
+        full_text: whisperData.text, // 句読点付き全文
         timestamp: new Date().toISOString(),
         segments: transcriptionSegments || undefined,
         emotionData: transcriptionSegments && transcriptionSegments.length > 0 ? {

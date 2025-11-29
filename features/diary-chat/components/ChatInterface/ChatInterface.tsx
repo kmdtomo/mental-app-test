@@ -6,6 +6,7 @@ import { ChevronDown, ChevronUp, Mic } from 'lucide-react';
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;  // AIメッセージやテキスト入力用（互換性のため残す）
+  full_text?: string; // 句読点を含む全文
   timestamp: string;
   // 音声入力の場合、セグメントデータを使用
   segments?: Array<{
@@ -52,29 +53,38 @@ export function ChatInterface({ messages, isLoading = false, loadingMessage = 'A
     setExpandedMessages(newExpanded);
   };
 
-  // 感情ラベルから色を取得
-  const getEmotionColor = (emotionLabel: string | null): string => {
-    if (!emotionLabel) return '';
+  // 感情ラベルから各種クラスを取得
+  const getEmotionClasses = (emotionLabel: string | null) => {
+    const base = {
+      text: '',
+      border: 'border-transparent',
+      hoverBg: 'hover:bg-transparent',
+    };
+
+    if (!emotionLabel) return base;
 
     const label = emotionLabel.toLowerCase();
 
     if (label.includes('喜び') || label.includes('興奮') || label.includes('満足')) {
-      return 'text-yellow-400';
+      return { text: 'text-yellow-400', border: 'border-yellow-400', hoverBg: 'hover:bg-yellow-400/20' };
     }
     if (label.includes('悲し') || label.includes('疲労') || label.includes('疲れ')) {
-      return 'text-blue-400';
+      return { text: 'text-blue-400', border: 'border-blue-400', hoverBg: 'hover:bg-blue-400/20' };
     }
     if (label.includes('ストレス') || label.includes('緊張')) {
-      return 'text-red-400';
+      return { text: 'text-red-400', border: 'border-red-400', hoverBg: 'hover:bg-red-400/20' };
     }
     if (label.includes('落ち込') || label.includes('沈')) {
-      return 'text-purple-400';
+      return { text: 'text-purple-400', border: 'border-purple-400', hoverBg: 'hover:bg-purple-400/20' };
     }
     if (label.includes('穏やか') || label.includes('リラックス')) {
-      return 'text-green-400';
+      return { text: 'text-green-400', border: 'border-green-400', hoverBg: 'hover:bg-green-400/20' };
+    }
+    if (label.includes('落ち着き')) {
+      return { text: 'text-teal-400', border: 'border-teal-400', hoverBg: 'hover:bg-teal-400/20' };
     }
 
-    return ''; // 中立は色なし（デフォルトの白）
+    return base;
   };
 
   const vadToEmotion = (arousal: number, valence: number, dominance: number): string => {
@@ -137,22 +147,34 @@ export function ChatInterface({ messages, isLoading = false, loadingMessage = 'A
                     : 'bg-muted'
                 }`}
               >
-                {/* セグメントがある場合は色分けして表示 */}
-                {message.segments && message.segments.length > 0 ? (
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed">
-                    {message.segments.map((segment, idx) => (
-                      <span
-                        key={segment.id}
-                        className={getEmotionColor(segment.emotion_label)}
-                        title={segment.emotion_label || '中立'}
-                      >
-                        {segment.text}
-                      </span>
-                    ))}
-                  </p>
-                ) : (
-                  <p className="whitespace-pre-wrap text-sm">{message.content}</p>
-                )}
+                {/* メッセージ表示ロジック */}
+                <div className="whitespace-pre-wrap text-sm leading-relaxed">
+                  {(() => {
+                    // アシスタントのメッセージの場合
+                    if (message.role === 'assistant') {
+                      return <p>{message.content}</p>;
+                    }
+
+                    // セグメントがある場合（音声入力）
+                    if (message.segments && message.segments.length > 0) {
+                      return message.segments.map((segment) => {
+                        const { text, border, hoverBg } = getEmotionClasses(segment.emotion_label);
+                        return (
+                          <span
+                            key={segment.id}
+                            className={`px-1 rounded transition-colors duration-200 border-l-2 ${text} ${border} ${hoverBg}`}
+                            title={segment.emotion_label || '中立'}
+                          >
+                            {segment.text}
+                          </span>
+                        );
+                      });
+                    }
+
+                    // セグメントがない場合（テキスト入力）
+                    return <p>{message.content}</p>;
+                  })()}
+                </div>
 
                 <div className="flex items-center gap-2 mt-2">
                   <span className="text-xs opacity-70">

@@ -74,6 +74,7 @@
     "react-server-dom-webpack": "^19.0.0",
     "react-syntax-highlighter": "^15.5.0",
     "react-textarea-autosize": "^8.5.3",
+    "recharts": "^3.5.1",
     "remark-gfm": "^3.0.1",
     "remark-math": "^5.1.1",
     "server-only": "^0.0.1",

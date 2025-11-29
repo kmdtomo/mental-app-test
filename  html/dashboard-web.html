@@ -1,0 +1,289 @@
+<!DOCTYPE html><html><head>
+    <style>@layer theme, base, paraflow, components, utilities;</style><meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    
+    
+    
+    <style id="moxt-styled">@layer paraflow{@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Montserrat:wght@100;200;300;400;500;600;700;800;900&family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Poppins:wght@100;200;300;400;500;600;700;800;900&family=Roboto+Condensed:wght@100;200;300;400;500;600;700;800;900&family=Roboto+Mono:wght@100;200;300;400;500;600;700&family=PT+Serif:wght@400;700&family=Arimo:wght@400;500;600;700&family=Raleway:wght@100;200;300;400;500;600;700;800;900&family=Nunito:wght@200;300;400;500;600;700&;800;900&family=Rubik:wght@300;400;500;600;700;800;900&family=Playfair+Display:wght@400;500;600;700;800;900&family=Ubuntu:wght@300;400;500;700&family=Merriweather:wght@300;400;500;600;700;800;900&family=Roboto+Slab:wght@100;200;300;400;500;600;700&family=Libre+Baskerville:wght@400;700&family=Inconsolata:wght@200;300;400;500;600;700;800;900&family=Dancing+Script:wght@400;500;600;700&family=Kanit:wght@100;200;300;400;500;600;700;800;900&display=swap')
+}</style>
+<!--FontAwesome version: 6.7.2--><link rel="stylesheet" href="https://static.paraflowcontent.com/public/css/font-awesome/font-awesome.672.css"><!--Tailwind version: 4.0.17--><script src="https://static.paraflowcontent.com/public/js/tailwind/tailwind.js"></script><!--iconify-icon version: 3.0.0--><script src="https://static.paraflowcontent.com/public/js/iconify/iconify-icon-3.0.0.js"></script></head>
+<body id="11:1" title="dashboard-web.html" orderindex="80" relativetransform="530, 125" style="font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, &quot;Helvetica Neue&quot;, Arial, sans-serif; line-height: 1.5;" class="flex w-[1440px] min-h-[900px]">
+
+<aside id="11:2" orderindex="80" style="background-color: rgba(250, 245, 240, 1);" class="shrink-0 min-w-fit">
+<div id="11:3" orderindex="80" class="flex flex-col w-64 h-full">
+
+<div id="11:4" orderindex="80" class="p-8">
+<div id="11:5" orderindex="80" class="flex items-center gap-y-3 gap-x-3">
+<div id="11:6" orderindex="80" style="background-color: rgba(193, 123, 104, 1); box-shadow: 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 2px 8px rgba(193, 123, 104, 0.25);" class="flex justify-center items-center w-10 h-10 rounded-full">
+<iconify-icon id="11:7" orderindex="80" style="color: color-mix( in oklab , #fff 85% , transparent );" icon="lucide:heart" class="text-lg"></iconify-icon>
+</div>
+<span id="11:8" orderindex="81" style="color: rgba(61, 54, 50, 1);" class="text-xl font-semibold">Mental-Test</span>
+</div>
+</div>
+
+<nav id="11:9" orderindex="81" style="flex-basis: 0%;" class="grow shrink pr-6 pl-6">
+<div id="11:10" orderindex="80" class="flex flex-col gap-y-2 gap-x-2">
+
+<div id="11:11" orderindex="80" style="background-color: color-mix( in oklab , #C17B68 15% , transparent ); color: rgba(193, 123, 104, 1); padding: 0.75rem 1rem;" class="flex items-center gap-y-3 gap-x-3 rounded-full">
+<div id="11:12" orderindex="80" class="flex justify-center items-center w-5 h-5">
+<iconify-icon id="11:13" orderindex="80" icon="lucide:layout-dashboard" class="text-base"></iconify-icon>
+</div>
+<span id="11:14" orderindex="81" class="text-lg font-semibold">ダッシュボード</span>
+</div>
+
+<div id="11:15" orderindex="81" class="hover:bg-[#C17B68]/8 flex items-center gap-y-3 gap-x-3 rounded-full" style="color: rgba(107, 95, 88, 1); padding: 0.75rem 1rem;">
+<div id="11:16" orderindex="80" class="flex justify-center items-center w-5 h-5">
+<iconify-icon id="11:17" orderindex="80" icon="lucide:message-circle" class="text-base"></iconify-icon>
+</div>
+<span id="11:18" orderindex="81" class="text-lg">対話</span>
+</div>
+
+<div id="11:19" orderindex="82" class="hover:bg-[#C17B68]/8 flex items-center gap-y-3 gap-x-3 rounded-full" style="color: rgba(107, 95, 88, 1); padding: 0.75rem 1rem;">
+<div id="11:20" orderindex="80" class="flex justify-center items-center w-5 h-5">
+<iconify-icon id="11:21" orderindex="80" icon="lucide:settings" class="text-base"></iconify-icon>
+</div>
+<span id="11:22" orderindex="81" class="text-lg">設定</span>
+</div>
+</div>
+</nav>
+
+<div id="11:23" orderindex="82" class="pr-6 pb-8 pl-6">
+<div id="11:24" orderindex="80" style="background-color: color-mix( in oklab , #fff 70% , transparent ); box-shadow: 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 2px 8px rgba(193, 123, 104, 0.12), 0 1px 3px rgba(107, 95, 88, 0.06);" class="flex items-center gap-y-3 gap-x-3 p-4 rounded-[20px]">
+<img id="11:25" orderindex="80" style="box-shadow: 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 2px 6px rgba(193, 123, 104, 0.15);" alt="User profile avatar of a smiling person" src="https://static.paraflowcontent.com/public/resource/image/5fe13763-0225-4a8c-966e-680486fc79aa.jpeg" class="w-10 h-10 object-cover rounded-full">
+<div id="11:26" orderindex="81" style="flex-basis: 0%;" class="grow shrink">
+<div id="11:27" orderindex="80" style="color: rgba(61, 54, 50, 1);" class="text-lg font-semibold">田中 太郎</div>
+<div id="11:28" orderindex="81" style="color: rgba(107, 95, 88, 1);" class="text-base">プレミアム会員</div>
+</div>
+</div>
+</div>
+</div>
+</aside>
+
+<main id="11:29" orderindex="81" style="flex-basis: 0%; background: rgba(251, 247, 243, 1);" class="overflow-x-hidden grow shrink">
+<div id="11:30" orderindex="80" style="padding: 2rem 3rem;">
+
+<div id="11:31" orderindex="80" class="mb-8">
+<h1 id="11:32" orderindex="80" style="color: rgba(61, 54, 50, 1);" class="text-4xl mb-2 font-semibold">ダッシュボード</h1>
+<p id="11:33" orderindex="81" style="color: rgba(107, 95, 88, 1);" class="text-lg">あなたの心の健康を記録し、振り返りましょう</p>
+</div>
+
+<div id="11:34" orderindex="81" class="grid grid-cols-3 gap-y-8 gap-x-8 mb-12">
+
+<div id="11:35" orderindex="80" style="background-color: color-mix( in oklab , #fff 85% , transparent ); box-shadow: 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 2px 8px rgba(193, 123, 104, 0.12), 0 1px 3px rgba(107, 95, 88, 0.06);" class="p-6 rounded-[20px]">
+<div id="11:36" orderindex="80" class="flex items-center gap-y-4 gap-x-4 mb-4">
+<div id="11:37" orderindex="80" style="background-color: color-mix( in oklab , #B8CAB0 20% , transparent );" class="flex justify-center items-center w-12 h-12 rounded-full">
+<iconify-icon id="11:38" orderindex="80" style="color: rgba(184, 202, 176, 1);" icon="lucide:calendar-check" class="text-xl"></iconify-icon>
+</div>
+<div id="11:39" orderindex="81">
+<h3 id="11:40" orderindex="80" style="color: rgba(61, 54, 50, 1);" class="text-xl font-semibold">今日の記録</h3>
+<p id="11:41" orderindex="81" style="color: rgba(107, 95, 88, 1);" class="text-base">2024年1月15日</p>
+</div>
+</div>
+<div id="11:42" orderindex="81" class="flex items-center gap-y-2 gap-x-2">
+<div id="11:43" orderindex="80" style="background-color: rgba(184, 202, 176, 1);" class="w-3 h-3 rounded-full"></div>
+<span id="11:44" orderindex="81" style="color: rgba(61, 54, 50, 1);" class="text-lg font-semibold">記録済み</span>
+</div>
+</div>
+
+<div id="11:45" orderindex="81" style="background-color: color-mix( in oklab , #fff 85% , transparent ); box-shadow: 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 2px 8px rgba(193, 123, 104, 0.12), 0 1px 3px rgba(107, 95, 88, 0.06);" class="p-6 rounded-[20px]">
+<div id="11:46" orderindex="80" class="flex items-center gap-y-4 gap-x-4 mb-4">
+<div id="11:47" orderindex="80" style="background-color: color-mix( in oklab , #C17B68 20% , transparent );" class="flex justify-center items-center w-12 h-12 rounded-full">
+<iconify-icon id="11:48" orderindex="80" style="color: rgba(193, 123, 104, 1);" icon="lucide:mic" class="text-xl"></iconify-icon>
+</div>
+<div id="11:49" orderindex="81">
+<h3 id="11:50" orderindex="80" style="color: rgba(61, 54, 50, 1);" class="text-xl font-semibold">録音回数</h3>
+<p id="11:51" orderindex="81" style="color: rgba(107, 95, 88, 1);" class="text-base">今月の残り</p>
+</div>
+</div>
+<div id="11:52" orderindex="81" class="flex justify-between items-center">
+<span id="11:53" orderindex="80" style="color: rgba(61, 54, 50, 1);" class="text-2xl font-semibold">3回</span>
+<span id="11:54" orderindex="81" style="color: rgba(107, 95, 88, 1);" class="text-lg">/ 5回</span>
+</div>
+<div id="11:55" orderindex="82" class="mt-3">
+<div id="11:56" orderindex="80" style="background-color: color-mix( in oklab , #C17B68 15% , transparent );" class="h-2 rounded-full">
+<div id="11:57" orderindex="80" style="background-color: rgba(193, 123, 104, 1); width: 60%; box-shadow: 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 1px 3px rgba(193, 123, 104, 0.3);" class="h-full rounded-full"></div>
+</div>
+</div>
+</div>
+
+<div id="11:58" orderindex="82" style="background-color: color-mix( in oklab , #fff 85% , transparent ); box-shadow: 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 2px 8px rgba(193, 123, 104, 0.12), 0 1px 3px rgba(107, 95, 88, 0.06);" class="p-6 rounded-[20px]">
+<div id="11:59" orderindex="80" class="flex items-center gap-y-4 gap-x-4 mb-4">
+<div id="11:60" orderindex="80" style="background-color: color-mix( in oklab , #A8B89F 20% , transparent );" class="flex justify-center items-center w-12 h-12 rounded-full">
+<iconify-icon id="11:61" orderindex="80" style="color: rgba(168, 184, 159, 1);" icon="lucide:trending-up" class="text-xl"></iconify-icon>
+</div>
+<div id="11:62" orderindex="81">
+<h3 id="11:63" orderindex="80" style="color: rgba(61, 54, 50, 1);" class="text-xl font-semibold">今週の記録</h3>
+<p id="11:64" orderindex="81" style="color: rgba(107, 95, 88, 1);" class="text-base">継続日数</p>
+</div>
+</div>
+<div id="11:65" orderindex="81" class="flex items-center gap-y-2 gap-x-2">
+<span id="11:66" orderindex="80" style="color: rgba(61, 54, 50, 1);" class="text-2xl font-semibold">5日</span>
+<span id="11:67" orderindex="81" style="color: rgba(107, 95, 88, 1);" class="text-lg">連続</span>
+</div>
+</div>
+</div>
+
+<div id="11:68" orderindex="82" class="grid grid-cols-3 gap-y-8 gap-x-8">
+
+<div id="11:69" orderindex="80" style="grid-column-start: span 2; grid-column-end: span 2;">
+<div id="11:70" orderindex="80" style="background-color: color-mix( in oklab , #fff 85% , transparent ); box-shadow: 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 2px 8px rgba(193, 123, 104, 0.12), 0 1px 3px rgba(107, 95, 88, 0.06);" class="p-8 rounded-[20px]">
+
+<div id="11:71" orderindex="80" class="flex justify-between items-center mb-8">
+<h2 id="11:72" orderindex="80" style="color: rgba(61, 54, 50, 1);" class="text-2xl font-semibold">日記カレンダー</h2>
+<div id="11:73" orderindex="81" class="flex items-center gap-y-4 gap-x-4">
+<button id="11:74" orderindex="80" class="hover:shadow-[0_4px_10px_rgba(193,123,104,0.18)] flex justify-center items-center w-10 h-10 rounded-full" style="background-color: color-mix( in oklab , #fff 70% , transparent ); box-shadow: 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 2px 6px rgba(193, 123, 104, 0.12);">
+<iconify-icon id="11:75" orderindex="80" style="color: rgba(107, 95, 88, 1);" icon="lucide:chevron-left" class="text-lg"></iconify-icon>
+</button>
+<span id="11:76" orderindex="81" style="color: rgba(61, 54, 50, 1);" class="text-xl text-center min-w-[120px] font-semibold">2024年1月</span>
+<button id="11:77" orderindex="82" class="hover:shadow-[0_4px_10px_rgba(193,123,104,0.18)] flex justify-center items-center w-10 h-10 rounded-full" style="background-color: color-mix( in oklab , #fff 70% , transparent ); box-shadow: 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 2px 6px rgba(193, 123, 104, 0.12);">
+<iconify-icon id="11:78" orderindex="80" style="color: rgba(107, 95, 88, 1);" icon="lucide:chevron-right" class="text-lg"></iconify-icon>
+</button>
+</div>
+</div>
+
+<div id="11:79" orderindex="81" class="grid grid-cols-7 gap-y-2 gap-x-2">
+
+<div id="11:80" orderindex="80" style="color: rgba(107, 95, 88, 1);" class="text-base text-center pt-3 pb-3 font-semibold">日</div>
+<div id="11:81" orderindex="81" style="color: rgba(107, 95, 88, 1);" class="text-base text-center pt-3 pb-3 font-semibold">月</div>
+<div id="11:82" orderindex="82" style="color: rgba(107, 95, 88, 1);" class="text-base text-center pt-3 pb-3 font-semibold">火</div>
+<div id="11:83" orderindex="83" style="color: rgba(107, 95, 88, 1);" class="text-base text-center pt-3 pb-3 font-semibold">水</div>
+<div id="11:84" orderindex="84" style="color: rgba(107, 95, 88, 1);" class="text-base text-center pt-3 pb-3 font-semibold">木</div>
+<div id="11:85" orderindex="85" style="color: rgba(107, 95, 88, 1);" class="text-base text-center pt-3 pb-3 font-semibold">金</div>
+<div id="11:86" orderindex="86" style="color: rgba(107, 95, 88, 1);" class="text-base text-center pt-3 pb-3 font-semibold">土</div>
+
+
+<div id="11:87" orderindex="87" style="color: rgba(196, 188, 182, 1);" class="text-base text-center pt-3 pb-3">31</div>
+<div id="11:88" orderindex="88" class="hover:bg-[#C17B68]/8 text-center relative pt-3 pb-3 rounded-full">
+<span id="11:89" orderindex="80" style="color: rgba(61, 54, 50, 1);" class="text-base">1</span>
+<div id="11:90" orderindex="81" style="background-color: rgba(184, 202, 176, 1);" class="absolute top-1 right-1 w-2 h-2 rounded-full"></div>
+</div>
+<div id="11:91" orderindex="89" class="hover:bg-[#C17B68]/8 text-center relative pt-3 pb-3 rounded-full">
+<span id="11:92" orderindex="80" style="color: rgba(61, 54, 50, 1);" class="text-base">2</span>
+<div id="11:93" orderindex="81" style="background-color: rgba(184, 202, 176, 1);" class="absolute top-1 right-1 w-2 h-2 rounded-full"></div>
+</div>
+<div id="11:94" orderindex="8a" class="hover:bg-[#C17B68]/8 text-base text-center pt-3 pb-3 rounded-full" style="color: rgba(61, 54, 50, 1);">3</div>
+<div id="11:95" orderindex="8b" class="hover:bg-[#C17B68]/8 text-center relative pt-3 pb-3 rounded-full">
+<span id="11:96" orderindex="80" style="color: rgba(61, 54, 50, 1);" class="text-base">4</span>
+<div id="11:97" orderindex="81" style="background-color: rgba(184, 202, 176, 1);" class="absolute top-1 right-1 w-2 h-2 rounded-full"></div>
+</div>
+<div id="11:98" orderindex="8c" class="hover:bg-[#C17B68]/8 text-center relative pt-3 pb-3 rounded-full">
+<span id="11:99" orderindex="80" style="color: rgba(61, 54, 50, 1);" class="text-base">5</span>
+<div id="11:100" orderindex="81" style="background-color: rgba(184, 202, 176, 1);" class="absolute top-1 right-1 w-2 h-2 rounded-full"></div>
+</div>
+<div id="11:101" orderindex="8d" class="hover:bg-[#C17B68]/8 text-base text-center pt-3 pb-3 rounded-full" style="color: rgba(61, 54, 50, 1);">6</div>
+
+<div id="11:102" orderindex="8e" class="hover:bg-[#C17B68]/8 text-base text-center pt-3 pb-3 rounded-full" style="color: rgba(61, 54, 50, 1);">7</div>
+<div id="11:103" orderindex="8f" class="hover:bg-[#C17B68]/8 text-center relative pt-3 pb-3 rounded-full">
+<span id="11:104" orderindex="80" style="color: rgba(61, 54, 50, 1);" class="text-base">8</span>
+<div id="11:105" orderindex="81" style="background-color: rgba(184, 202, 176, 1);" class="absolute top-1 right-1 w-2 h-2 rounded-full"></div>
+</div>
+<div id="11:106" orderindex="90" class="hover:bg-[#C17B68]/8 text-center relative pt-3 pb-3 rounded-full">
+<span id="11:107" orderindex="80" style="color: rgba(61, 54, 50, 1);" class="text-base">9</span>
+<div id="11:108" orderindex="81" style="background-color: rgba(184, 202, 176, 1);" class="absolute top-1 right-1 w-2 h-2 rounded-full"></div>
+</div>
+<div id="11:109" orderindex="91" class="hover:bg-[#C17B68]/8 text-center relative pt-3 pb-3 rounded-full">
+<span id="11:110" orderindex="80" style="color: rgba(61, 54, 50, 1);" class="text-base">10</span>
+<div id="11:111" orderindex="81" style="background-color: rgba(184, 202, 176, 1);" class="absolute top-1 right-1 w-2 h-2 rounded-full"></div>
+</div>
+<div id="11:112" orderindex="92" class="hover:bg-[#C17B68]/8 text-center relative pt-3 pb-3 rounded-full">
+<span id="11:113" orderindex="80" style="color: rgba(61, 54, 50, 1);" class="text-base">11</span>
+<div id="11:114" orderindex="81" style="background-color: rgba(184, 202, 176, 1);" class="absolute top-1 right-1 w-2 h-2 rounded-full"></div>
+</div>
+<div id="11:115" orderindex="93" class="hover:bg-[#C17B68]/8 text-center relative pt-3 pb-3 rounded-full">
+<span id="11:116" orderindex="80" style="color: rgba(61, 54, 50, 1);" class="text-base">12</span>
+<div id="11:117" orderindex="81" style="background-color: rgba(184, 202, 176, 1);" class="absolute top-1 right-1 w-2 h-2 rounded-full"></div>
+</div>
+<div id="11:118" orderindex="94" class="hover:bg-[#C17B68]/8 text-base text-center pt-3 pb-3 rounded-full" style="color: rgba(61, 54, 50, 1);">13</div>
+
+<div id="11:119" orderindex="95" class="hover:bg-[#C17B68]/8 text-base text-center pt-3 pb-3 rounded-full" style="color: rgba(61, 54, 50, 1);">14</div>
+<div id="11:120" orderindex="96" style="background-color: rgba(193, 123, 104, 1); box-shadow: 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 2px 8px rgba(193, 123, 104, 0.25); color: color-mix( in oklab , #fff 85% , transparent );" class="text-center pt-3 pb-3 rounded-full">
+<span id="11:121" orderindex="80" class="text-base font-semibold">15</span>
+</div>
+<div id="11:122" orderindex="97" class="hover:bg-[#C17B68]/8 text-base text-center pt-3 pb-3 rounded-full" style="color: rgba(61, 54, 50, 1);">16</div>
+<div id="11:123" orderindex="98" class="hover:bg-[#C17B68]/8 text-base text-center pt-3 pb-3 rounded-full" style="color: rgba(61, 54, 50, 1);">17</div>
+<div id="11:124" orderindex="99" class="hover:bg-[#C17B68]/8 text-base text-center pt-3 pb-3 rounded-full" style="color: rgba(61, 54, 50, 1);">18</div>
+<div id="11:125" orderindex="9a" class="hover:bg-[#C17B68]/8 text-base text-center pt-3 pb-3 rounded-full" style="color: rgba(61, 54, 50, 1);">19</div>
+<div id="11:126" orderindex="9b" class="hover:bg-[#C17B68]/8 text-base text-center pt-3 pb-3 rounded-full" style="color: rgba(61, 54, 50, 1);">20</div>
+
+<div id="11:127" orderindex="9c" class="hover:bg-[#C17B68]/8 text-base text-center pt-3 pb-3 rounded-full" style="color: rgba(61, 54, 50, 1);">21</div>
+<div id="11:128" orderindex="9d" class="hover:bg-[#C17B68]/8 text-base text-center pt-3 pb-3 rounded-full" style="color: rgba(61, 54, 50, 1);">22</div>
+<div id="11:129" orderindex="9e" class="hover:bg-[#C17B68]/8 text-base text-center pt-3 pb-3 rounded-full" style="color: rgba(61, 54, 50, 1);">23</div>
+<div id="11:130" orderindex="9f" class="hover:bg-[#C17B68]/8 text-base text-center pt-3 pb-3 rounded-full" style="color: rgba(61, 54, 50, 1);">24</div>
+<div id="11:131" orderindex="a0" class="hover:bg-[#C17B68]/8 text-base text-center pt-3 pb-3 rounded-full" style="color: rgba(61, 54, 50, 1);">25</div>
+<div id="11:132" orderindex="a1" class="hover:bg-[#C17B68]/8 text-base text-center pt-3 pb-3 rounded-full" style="color: rgba(61, 54, 50, 1);">26</div>
+<div id="11:133" orderindex="a2" class="hover:bg-[#C17B68]/8 text-base text-center pt-3 pb-3 rounded-full" style="color: rgba(61, 54, 50, 1);">27</div>
+
+<div id="11:134" orderindex="a3" class="hover:bg-[#C17B68]/8 text-base text-center pt-3 pb-3 rounded-full" style="color: rgba(61, 54, 50, 1);">28</div>
+<div id="11:135" orderindex="a4" class="hover:bg-[#C17B68]/8 text-base text-center pt-3 pb-3 rounded-full" style="color: rgba(61, 54, 50, 1);">29</div>
+<div id="11:136" orderindex="a5" class="hover:bg-[#C17B68]/8 text-base text-center pt-3 pb-3 rounded-full" style="color: rgba(61, 54, 50, 1);">30</div>
+<div id="11:137" orderindex="a6" class="hover:bg-[#C17B68]/8 text-base text-center pt-3 pb-3 rounded-full" style="color: rgba(61, 54, 50, 1);">31</div>
+<div id="11:138" orderindex="a7" style="color: rgba(196, 188, 182, 1);" class="text-base text-center pt-3 pb-3">1</div>
+<div id="11:139" orderindex="a8" style="color: rgba(196, 188, 182, 1);" class="text-base text-center pt-3 pb-3">2</div>
+<div id="11:140" orderindex="a9" style="color: rgba(196, 188, 182, 1);" class="text-base text-center pt-3 pb-3">3</div>
+</div>
+
+<div id="11:141" orderindex="82" style="border-top-style: solid; border-color: color-mix( in oklab , #C17B68 12% , transparent );" class="flex justify-center items-center gap-y-8 gap-x-8 mt-8 pt-6 border-t-[1px]">
+<div id="11:142" orderindex="80" class="flex items-center gap-y-2 gap-x-2">
+<div id="11:143" orderindex="80" style="background-color: rgba(184, 202, 176, 1);" class="w-3 h-3 rounded-full"></div>
+<span id="11:144" orderindex="81" style="color: rgba(107, 95, 88, 1);" class="text-base">記録済み</span>
+</div>
+<div id="11:145" orderindex="81" class="flex items-center gap-y-2 gap-x-2">
+<div id="11:146" orderindex="80" style="background-color: rgba(193, 123, 104, 1);" class="w-3 h-3 rounded-full"></div>
+<span id="11:147" orderindex="81" style="color: rgba(107, 95, 88, 1);" class="text-base">今日</span>
+</div>
+</div>
+</div>
+</div>
+
+<div id="11:148" orderindex="81" style="grid-column-start: span 1; grid-column-end: span 1;" class="flex flex-col gap-y-8 gap-x-8">
+
+<div id="11:149" orderindex="80" style="background-color: color-mix( in oklab , #fff 85% , transparent ); box-shadow: 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 2px 8px rgba(193, 123, 104, 0.12), 0 1px 3px rgba(107, 95, 88, 0.06);" class="p-8 rounded-[20px]">
+<div id="11:150" orderindex="80" class="text-center mb-6">
+<div id="11:151" orderindex="80" style="background-color: color-mix( in oklab , #C17B68 10% , transparent ); margin-right: auto; margin-left: auto;" class="flex justify-center items-center w-16 h-16 mb-4 rounded-full">
+<iconify-icon id="11:152" orderindex="80" style="color: rgba(193, 123, 104, 1);" icon="lucide:plus" class="text-2xl"></iconify-icon>
+</div>
+<h3 id="11:153" orderindex="81" style="color: rgba(61, 54, 50, 1);" class="text-xl mb-2 font-semibold">新しい日記を作成</h3>
+<p id="11:154" orderindex="82" style="color: rgba(107, 95, 88, 1);" class="text-base">今日の気持ちを記録しましょう</p>
+</div>
+<button id="11:155" orderindex="81" class="hover:shadow-[0_4px_12px_rgba(193,123,104,0.35)] flex justify-center items-center gap-y-2 gap-x-2 w-full rounded-full" style="background-color: rgba(193, 123, 104, 1); box-shadow: 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 2px 8px rgba(193, 123, 104, 0.25); color: color-mix( in oklab , #fff 85% , transparent ); padding: 1rem 1.5rem;">
+<iconify-icon id="11:156" orderindex="80" icon="lucide:edit-3" class="text-lg"></iconify-icon>
+<span id="11:157" orderindex="81" class="text-lg whitespace-nowrap font-semibold">日記を作成</span>
+</button>
+</div>
+
+<div id="11:158" orderindex="81" style="background-color: color-mix( in oklab , #fff 85% , transparent ); box-shadow: 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 2px 8px rgba(193, 123, 104, 0.12), 0 1px 3px rgba(107, 95, 88, 0.06);" class="p-6 rounded-[20px]">
+<h3 id="11:159" orderindex="80" style="color: rgba(61, 54, 50, 1);" class="text-xl mb-6 font-semibold">今月の統計</h3>
+<div id="11:160" orderindex="81">
+<div id="11:161" orderindex="80" style="margin-top: 0;" class="flex justify-between items-center mb-4">
+<span id="11:162" orderindex="80" style="color: rgba(107, 95, 88, 1);" class="text-base">記録日数</span>
+<span id="11:163" orderindex="81" style="color: rgba(61, 54, 50, 1);" class="text-lg font-semibold">12日</span>
+</div>
+<div id="11:164" orderindex="81" style="margin-top: 0;" class="flex justify-between items-center mb-4">
+<span id="11:165" orderindex="80" style="color: rgba(107, 95, 88, 1);" class="text-base">平均感情スコア</span>
+<span id="11:166" orderindex="81" style="color: rgba(61, 54, 50, 1);" class="text-lg font-semibold">7.2</span>
+</div>
+<div id="11:167" orderindex="82" class="flex justify-between items-center">
+<span id="11:168" orderindex="80" style="color: rgba(107, 95, 88, 1);" class="text-base">最長継続</span>
+<span id="11:169" orderindex="81" style="color: rgba(61, 54, 50, 1);" class="text-lg font-semibold">5日</span>
+</div>
+</div>
+</div>
+
+<div id="11:170" orderindex="82" style="background-color: color-mix( in oklab , #fff 85% , transparent ); box-shadow: 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 0 rgba(0, 0, 0, 0), 0 2px 8px rgba(193, 123, 104, 0.12), 0 1px 3px rgba(107, 95, 88, 0.06);" class="p-6 rounded-[20px]">
+<h3 id="11:171" orderindex="80" style="color: rgba(61, 54, 50, 1);" class="text-xl mb-4 font-semibold">最近の気づき</h3>
+<div id="11:172" orderindex="81">
+<div id="11:173" orderindex="80" style="background-color: color-mix( in oklab , #C17B68 8% , transparent ); margin-top: 0;" class="mb-3 p-4 rounded-[12px]">
+<p id="11:174" orderindex="80" style="color: rgba(61, 54, 50, 1);" class="text-base">運動をした日は気分が良い傾向があります</p>
+</div>
+<div id="11:175" orderindex="81" style="background-color: color-mix( in oklab , #A8B89F 15% , transparent );" class="p-4 rounded-[12px]">
+<p id="11:176" orderindex="80" style="color: rgba(61, 54, 50, 1);" class="text-base">睡眠時間が7時間以上の日は感情が安定しています</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+
+
+</body></html>

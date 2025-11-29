@@ -171,9 +171,28 @@ export async function POST(request: NextRequest) {
     console.log(`Punctuation completed in ${punctuationTime}ms`);
     console.log('Punctuated text:', punctuatedText);
 
-    // 句読点で分割してセグメント生成（。と、の両方で分割）
+    // 句読点で分割してセグメント生成（句読点を含めて分割）
     const startMapping = Date.now();
-    const sentences = punctuatedText.split(/[。、]/).filter(s => s.trim());
+    // 句読点の直前で分割し、句読点を次のセグメントに含める
+    const sentences: string[] = [];
+    let currentSentence = '';
+
+    for (let i = 0; i < punctuatedText.length; i++) {
+      const char = punctuatedText[i];
+      currentSentence += char;
+
+      // 句読点に到達したらセグメントを確定
+      if (char === '。' || char === '、') {
+        sentences.push(currentSentence.trim());
+        currentSentence = '';
+      }
+    }
+
+    // 残りのテキストがあれば追加
+    if (currentSentence.trim()) {
+      sentences.push(currentSentence.trim());
+    }
+
     const segments = mapSentencesToWords(sentences, words);
     const mappingTime = Date.now() - startMapping;
     console.log(`Mapping completed in ${mappingTime}ms: ${segments.length} segments created`);
