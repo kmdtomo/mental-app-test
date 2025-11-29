@@ -13,14 +13,27 @@ type NavigationItem = {
 
 interface WebSidebarProps {
   activeItem?: 'dashboard' | 'dialogue' | 'settings';
+  user?: {
+    id: string;
+    email: string;
+    name: string;
+    avatarUrl: string | null;
+    createdAt?: string;
+  };
 }
 
-export function WebSidebar({ activeItem }: WebSidebarProps) {
+export function WebSidebar({ activeItem, user }: WebSidebarProps) {
   const navigationItems: NavigationItem[] = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'ダッシュボード', href: '/dashboard-web', active: activeItem === 'dashboard' },
     { id: 'dialogue', icon: MessageCircle, label: '対話', href: '/ai-dialogue-web', active: activeItem === 'dialogue' },
     { id: 'settings', icon: Settings, label: '設定', href: '/user-detail-web', active: activeItem === 'settings' },
   ];
+
+  // 表示名（名前がなければメールアドレスの@前を使用）
+  const displayName = user?.name || user?.email?.split('@')[0] || 'ユーザー';
+
+  // イニシャル
+  const initials = displayName.slice(0, 2).toUpperCase();
 
   return (
     <aside className="shrink-0 min-w-fit bg-[#FAF5F0] relative">
@@ -62,16 +75,24 @@ export function WebSidebar({ activeItem }: WebSidebarProps) {
 
         {/* User Profile Card - Fixed at Bottom */}
         <div className="px-6 pb-8">
-          <div className="flex items-center gap-3 p-4 rounded-[20px] bg-white/70 shadow-[0_2px_8px_rgba(193,123,104,0.12),0_1px_3px_rgba(107,95,88,0.06)]">
-            <img
-              src="https://static.paraflowcontent.com/public/resource/image/5fe13763-0225-4a8c-966e-680486fc79aa.jpeg"
-              alt="User profile"
-              className="w-10 h-10 object-cover rounded-full shadow-[0_2px_6px_rgba(193,123,104,0.15)]"
-            />
-            <div className="grow shrink">
-              <div className="text-lg font-semibold text-[#3D3632]">田中 太郎</div>
+          <Link href="/user-detail-web">
+            <div className="flex items-center gap-3 p-4 rounded-[20px] bg-white/70 shadow-[0_2px_8px_rgba(193,123,104,0.12),0_1px_3px_rgba(107,95,88,0.06)] hover:shadow-[0_4px_12px_rgba(193,123,104,0.18)] transition-shadow cursor-pointer">
+              {user?.avatarUrl ? (
+                <img
+                  src={user.avatarUrl}
+                  alt="User profile"
+                  className="w-10 h-10 object-cover rounded-full shadow-[0_2px_6px_rgba(193,123,104,0.15)]"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-[#C17B68]/20 flex items-center justify-center shadow-[0_2px_6px_rgba(193,123,104,0.15)]">
+                  <span className="text-sm font-semibold text-[#C17B68]">{initials}</span>
+                </div>
+              )}
+              <div className="grow shrink">
+                <div className="text-lg font-semibold text-[#3D3632]">{displayName}</div>
+              </div>
             </div>
-          </div>
+          </Link>
         </div>
       </div>
     </aside>

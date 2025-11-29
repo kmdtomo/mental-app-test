@@ -35,13 +35,13 @@ export async function POST(request: NextRequest) {
 
     console.log('Generating summary for date:', targetDate);
 
-    // 1. 既存のdaily_summariesからtranscription_textを取得
-    const { data: existingSummary, error: summaryFetchError } = await supabase
+    // 1. 既存のdaily_summariesからtranscription_textを取得（なければnull）
+    const { data: existingSummaries, error: summaryFetchError } = await supabase
       .from('daily_summaries')
       .select('transcription_text')
       .eq('user_id', user.id)
       .eq('date', targetDate)
-      .single();
+      .limit(1);
 
     if (summaryFetchError) {
       console.error('Error fetching summary:', summaryFetchError);
@@ -51,15 +51,8 @@ export async function POST(request: NextRequest) {
       }, { status: 500 });
     }
 
-    if (!existingSummary) {
-      console.error('No daily summary found for date:', targetDate);
-      return NextResponse.json({
-        error: 'この日付の日記データが見つかりません。先に録音を行ってください。',
-        date: targetDate
-      }, { status: 404 });
-    }
-
-    const transcriptionText = existingSummary.transcription_text || '';
+    const existingSummary = existingSummaries?.[0] || null;
+    const transcriptionText = existingSummary?.transcription_text || '';
     console.log('Found transcription text, length:', transcriptionText.length);
 
     // 2. dialogue_turnsから会話履歴とrecording_idsを取得
@@ -223,22 +216,40 @@ ${fullConversation || transcriptionText}
 
     console.log('AI summary generated');
 
-    // 4. daily_summariesを更新（transcription_textは既存のものを保持）
-    const { error: summaryError } = await supabase
-      .from('daily_summaries')
-      .update({
-        formatted_text: diarySummary,
-        avg_arousal: avgArousal,
-        avg_valence: avgValence,
-        avg_dominance: avgDominance,
-        dominant_emotion: null,
-        emotion_distribution: null,
-        total_recordings: recordingIds.length,
-        ai_insights: aiInsights,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('user_id', user.id)
-      .eq('date', targetDate);
+    // 4. daily_summariesを更新または作成
+    const summaryData = {
+      formatted_text: diarySummary,
+      avg_arousal: avgArousal,
+      avg_valence: avgValence,
+      avg_dominance: avgDominance,
+      dominant_emotion: null,
+      emotion_distribution: null,
+      total_recordings: recordingIds.length,
+      ai_insights: aiInsights,
+      updated_at: new Date().toISOString(),
+    };
+
+    let summaryError;
+    if (existingSummary) {
+      // 既存のサマリーを更新
+      const { error } = await supabase
+        .from('daily_summaries')
+        .update(summaryData)
+        .eq('user_id', user.id)
+        .eq('date', targetDate);
+      summaryError = error;
+    } else {
+      // 新規サマリーを作成
+      const { error } = await supabase
+        .from('daily_summaries')
+        .insert({
+          user_id: user.id,
+          date: targetDate,
+          transcription_text: conversationForDiary || '',
+          ...summaryData,
+        });
+      summaryError = error;
+    }
 
     if (summaryError) {
       console.error('Error saving summary:', summaryError);

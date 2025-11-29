@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 
+// 認証が必要なページで使用。ユーザー情報を返す必要があるためgetUser()を使用
 export const handleAuthValidation = async () => {
   const cookieStore = cookies();
   const supabase = createClient(cookieStore);
@@ -20,18 +21,20 @@ export const handleAuthValidation = async () => {
 };
 
 // ログインしていた場合、/voice-diary にリダイレクトする
+// ミドルウェアで既にセッションチェックをしているため、getSessionを使用
 export const handleAuthRedirect = async () => {
   const cookieStore = cookies();
   const supabase = createClient(cookieStore);
 
   try {
-    const { data, error } = await supabase.auth.getUser();
-    if (!error && data.user) {
+    // getUser()ではなくgetSession()を使用してAPI呼び出しを削減
+    const { data, error } = await supabase.auth.getSession();
+    if (!error && data.session) {
       redirect("/voice-diary");
     }
   } catch (e) {
     console.error(e);
-    throw e;
+    // エラーが発生してもログインページは表示する
   }
 };
 

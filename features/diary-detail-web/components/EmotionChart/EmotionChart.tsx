@@ -20,25 +20,57 @@ interface EmotionPoint {
   formattedTime: string;
   arousal: number;
   valence: number;
+  dominance?: number;
   speaker: 'user' | 'model';
   text: string;
+  emotionLabel?: string; // 8種類の感情ラベル
 }
+
+// 感情ラベルに対応する色（valenceベースのグラデーション）
+const emotionLabelColors: Record<string, string> = {
+  '喜び・楽しい': '#10B981',       // 緑（最もポジティブ）
+  '穏やか・リラックス': '#34D399', // 薄緑
+  '落ち着き': '#5EEAD4',          // ティール
+  '中立': '#C17B68',              // 茶色（中央）
+  'ストレス・緊張': '#F59E0B',    // オレンジ
+  '不安・心配': '#F97316',        // オレンジ赤
+  '悲しみ': '#FB7185',            // ピンク赤
+  '疲労・無気力': '#F43F5E',      // 赤（最もネガティブ）
+};
 
 interface EmotionChartProps {
   data: EmotionPoint[];
   compact?: boolean; // コンパクトモード（小さいUI向け）
 }
 
+// emotion_labelに基づいたY軸位置（0-1の範囲）
+const emotionLabelYPosition: Record<string, number> = {
+  '喜び・楽しい': 0.9,        // 最上部
+  '穏やか・リラックス': 0.78, // 上部
+  '落ち着き': 0.65,           // やや上
+  '中立': 0.5,                // 中央
+  'ストレス・緊張': 0.38,     // やや下
+  '不安・心配': 0.28,         // 下部
+  '悲しみ': 0.18,             // 下部
+  '疲労・無気力': 0.1,        // 最下部
+};
+
 export function EmotionChart({ data, compact = false }: EmotionChartProps) {
-  // Process data to relative time
+  // Process data - インデックスベースで均等配置（時間差に関係なく）
   const processedData = useMemo(() => {
     if (data.length === 0) return [];
-    const startTime = data[0].timestamp;
-    return data.map(d => ({
-      ...d,
-      relativeTime: (d.timestamp - startTime) / 1000,
-      visualValence: Math.max(0.1, Math.min(0.9, d.valence))
-    }));
+    return data.map((d, index) => {
+      // emotionLabelがあればその位置を使用、なければvalenceを使用
+      const yPosition = d.emotionLabel
+        ? (emotionLabelYPosition[d.emotionLabel] ?? 0.5)
+        : d.valence;
+      return {
+        ...d,
+        // インデックスベースで均等に配置（録音間の時間差を無視）
+        relativeTime: index,
+        visualValence: Math.max(0.1, Math.min(0.9, yPosition))
+      };
+    });
   }, [data]);
 
   // Find Peak and Low points
@@ -72,15 +104,29 @@ export function EmotionChart({ data, compact = false }: EmotionChartProps) {
     if (active && payload && payload.length) {
       const point = payload[0].payload;
       if (!point.text) return null;
-      const color = getEmotionColor(point.valence);
+
+      // emotionLabelがある場合はその色を使用、なければvalenceから計算
+      const emotionLabel = point.emotionLabel || '中立';
+      const color = emotionLabelColors[emotionLabel] || getEmotionColor(point.valence);
 
       return (
-        <div className="bg-[#FAF5F0]/95 backdrop-blur-md p-4 shadow-xl shadow-[#C17B68]/10 rounded-2xl border border-[#C17B68]/20 max-w-[240px]">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }}></div>
-            <span className="text-[10px] text-[#6B5F58] uppercase font-bold tracking-wider">{point.formattedTime}</span>
+        <div className="bg-[#FAF5F0]/95 backdrop-blur-md p-4 shadow-xl shadow-[#C17B68]/10 rounded-2xl border border-[#C17B68]/20 max-w-[280px]">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }}></div>
+              <span className="text-[11px] font-bold" style={{ color }}>{emotionLabel}</span>
+            </div>
+            <span className="text-[10px] text-[#6B5F58] font-medium">{point.formattedTime}</span>
           </div>
-          <p className="text-sm font-medium text-[#3D3632] leading-snug">&quot;{point.text}&quot;</p>
+          <p className="text-sm font-medium text-[#3D3632] leading-snug mb-2">&quot;{point.text}&quot;</p>
+          {/* VAD値（実験用） */}
+          <div className="pt-2 border-t border-[#C17B68]/10">
+            <div className="flex gap-3 text-[10px] font-mono text-[#6B5F58]">
+              <span>V: {point.valence?.toFixed(2) ?? '-'}</span>
+              <span>A: {point.arousal?.toFixed(2) ?? '-'}</span>
+              <span>D: {point.dominance?.toFixed(2) ?? '-'}</span>
+            </div>
+          </div>
         </div>
       );
     }
@@ -89,7 +135,10 @@ export function EmotionChart({ data, compact = false }: EmotionChartProps) {
 
   const CustomDot = (props: any) => {
     const { cx, cy, payload } = props;
-    const color = getEmotionColor(payload.valence);
+    // emotionLabelがあればその色を使用、なければvalenceから計算
+    const color = payload.emotionLabel
+      ? (emotionLabelColors[payload.emotionLabel] || getEmotionColor(payload.valence))
+      : getEmotionColor(payload.valence);
     const isSignificant = payload.speaker === 'user' || payload === maxPoint || payload === minPoint;
 
     if (!isSignificant) return null;

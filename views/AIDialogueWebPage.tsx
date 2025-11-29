@@ -1,23 +1,52 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { WebSidebar } from '@/components/navigation/WebSidebar';
-import { Mic, FileText, Activity, ChevronDown, ChevronUp } from 'lucide-react';
+import { Mic, FileText, Activity, ChevronDown, ChevronUp, Square, Loader2 } from 'lucide-react';
 import { EmotionChart } from '@/features/diary-detail-web/components';
+import { getTodayDialogue } from '@/features/diary-chat/actions/chatActions';
+import { useVoiceRecorder } from '@/features/voice-diary/hooks/useVoiceRecorder';
+import { useAudioVisualizer } from '@/features/voice-diary/hooks/useAudioVisualizer';
 
-// 感情の色を定義
+// 感情の色を定義（valenceベースのグラデーション、EmotionChartと統一）
+// 高valence（ポジティブ）= 緑系、低valence（ネガティブ）= 赤/オレンジ系
 const emotionColors: Record<string, string> = {
-  happy: '#A8B89F',      // 緑系 - 喜び
-  sad: '#7BA3C9',        // 青系 - 悲しみ
-  angry: '#C17B68',      // 赤系 - 怒り
-  anxious: '#D4A574',    // オレンジ系 - 不安
-  neutral: '#9A8D85',    // グレー系 - 中立
+  '喜び・楽しい': '#10B981',       // 緑（最もポジティブ）
+  '穏やか・リラックス': '#34D399', // 薄緑
+  '落ち着き': '#5EEAD4',          // ティール
+  '中立': '#C17B68',              // 茶色（中央）
+  'ストレス・緊張': '#F59E0B',    // オレンジ
+  '不安・心配': '#F97316',        // オレンジ赤
+  '悲しみ': '#FB7185',            // ピンク赤
+  '疲労・無気力': '#F43F5E',      // 赤（最もネガティブ）
 };
 
-// トランスクリプトセグメントの型
-interface TranscriptSegment {
+// セグメントの型
+interface Segment {
+  id: string;
   text: string;
-  emotion: string;
+  start_time: number;
+  end_time: number;
+  emotion_label: string | null;
+  arousal: number | null;
+  valence: number | null;
+  dominance: number | null;
+}
+
+// メッセージの型
+interface Message {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+  segments?: Segment[];
+  emotionData?: {
+    segments: Segment[];
+    total_segments: number;
+    avg_arousal: number;
+    avg_valence: number;
+    avg_dominance: number;
+  };
 }
 
 // EmotionChart用のデータ型
@@ -27,101 +56,74 @@ interface EmotionPoint {
   formattedTime: string;
   arousal: number;
   valence: number;
+  dominance?: number;
   speaker: 'user' | 'model';
   text: string;
+  emotionLabel?: string;
 }
 
-// メッセージの型
-interface Message {
-  id: number;
-  speaker: 'user' | 'ai';
-  text: string;
-  formattedTime: string;
-  transcript?: TranscriptSegment[];
-  emotionData?: EmotionPoint[]; // グラフ用データ
+interface AIDialogueWebPageProps {
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    avatarUrl: string | null;
+    createdAt?: string;
+  };
+  recordingLimit: {
+    used: number;
+    remaining: number;
+    total: number;
+  };
 }
-
-// モックデータ - 各ユーザー発話にグラフ用データを追加
-const mockEmotionData: Message[] = [
-  {
-    id: 1,
-    speaker: 'ai',
-    text: 'こんにちは！今日はどんな一日でしたか？',
-    formattedTime: '14:30',
-  },
-  {
-    id: 2,
-    speaker: 'user',
-    text: '今日は仕事で大変なことがあって、少し疲れています。でも、帰りに美味しいコーヒーを飲めたので、少し気分が良くなりました。',
-    formattedTime: '14:31',
-    transcript: [
-      { text: '今日は仕事で大変なことがあって、', emotion: 'anxious' },
-      { text: '少し疲れています。', emotion: 'sad' },
-      { text: 'でも、帰りに美味しいコーヒーを飲めたので、', emotion: 'neutral' },
-      { text: '少し気分が良くなりました。', emotion: 'happy' },
-    ],
-    emotionData: [
-      { id: 'msg2-0', timestamp: Date.now() - 60000, formattedTime: '0:00', arousal: 0.5, valence: 0.35, speaker: 'user', text: '今日は仕事で大変なことがあって、' },
-      { id: 'msg2-1', timestamp: Date.now() - 55000, formattedTime: '0:05', arousal: 0.4, valence: 0.25, speaker: 'user', text: '少し疲れています。' },
-      { id: 'msg2-2', timestamp: Date.now() - 50000, formattedTime: '0:10', arousal: 0.4, valence: 0.55, speaker: 'user', text: 'でも、帰りに美味しいコーヒーを飲めたので、' },
-      { id: 'msg2-3', timestamp: Date.now() - 45000, formattedTime: '0:15', arousal: 0.6, valence: 0.85, speaker: 'user', text: '少し気分が良くなりました。' },
-    ],
-  },
-  {
-    id: 3,
-    speaker: 'ai',
-    text: '大変な一日だったのですね。疲れている中でも、美味しいコーヒーで少しリラックスできたのは良かったです。仕事で何か特に大変だったことはありますか？',
-    formattedTime: '14:32',
-  },
-  {
-    id: 4,
-    speaker: 'user',
-    text: '締め切りが急に早まって、焦ってしまいました。でも、チームのみんなが助けてくれて、なんとか間に合いました。感謝しています。',
-    formattedTime: '14:33',
-    transcript: [
-      { text: '締め切りが急に早まって、', emotion: 'anxious' },
-      { text: '焦ってしまいました。', emotion: 'angry' },
-      { text: 'でも、チームのみんなが助けてくれて、', emotion: 'happy' },
-      { text: 'なんとか間に合いました。', emotion: 'neutral' },
-      { text: '感謝しています。', emotion: 'happy' },
-    ],
-    emotionData: [
-      { id: 'msg4-0', timestamp: Date.now() - 30000, formattedTime: '0:00', arousal: 0.6, valence: 0.35, speaker: 'user', text: '締め切りが急に早まって、' },
-      { id: 'msg4-1', timestamp: Date.now() - 25000, formattedTime: '0:05', arousal: 0.8, valence: 0.20, speaker: 'user', text: '焦ってしまいました。' },
-      { id: 'msg4-2', timestamp: Date.now() - 20000, formattedTime: '0:10', arousal: 0.6, valence: 0.85, speaker: 'user', text: 'でも、チームのみんなが助けてくれて、' },
-      { id: 'msg4-3', timestamp: Date.now() - 15000, formattedTime: '0:15', arousal: 0.4, valence: 0.55, speaker: 'user', text: 'なんとか間に合いました。' },
-      { id: 'msg4-4', timestamp: Date.now() - 10000, formattedTime: '0:20', arousal: 0.5, valence: 0.90, speaker: 'user', text: '感謝しています。' },
-    ],
-  },
-];
 
 // 感情に応じた色付きテキストを表示するコンポーネント
-function ColoredTranscript({ segments }: { segments: TranscriptSegment[] }) {
+function ColoredTranscript({ segments }: { segments: Segment[] }) {
   return (
     <p className="text-lg text-[#3D3632]">
-      {segments.map((segment, index) => (
-        <span
-          key={index}
-          style={{
-            backgroundColor: `${emotionColors[segment.emotion]}20`,
-            borderBottom: `2px solid ${emotionColors[segment.emotion]}`,
-            paddingBottom: '2px',
-          }}
-        >
-          {segment.text}
-        </span>
-      ))}
+      {segments.map((segment, index) => {
+        const emotionColor = emotionColors[segment.emotion_label || '中立'] || '#9A8D85';
+        return (
+          <span
+            key={segment.id || index}
+            style={{
+              backgroundColor: `${emotionColor}20`,
+              borderBottom: `2px solid ${emotionColor}`,
+              paddingBottom: '2px',
+            }}
+            title={segment.emotion_label || '中立'}
+          >
+            {segment.text}
+          </span>
+        );
+      })}
     </p>
   );
 }
 
 // 感情グラフ表示トグルコンポーネント
-function EmotionChartToggle({ emotionData }: { emotionData: EmotionPoint[] }) {
+function EmotionChartToggle({ segments }: { segments: Segment[] }) {
   const [isExpanded, setIsExpanded] = useState(false);
+
+  // セグメントをEmotionChart用のデータに変換
+  const emotionData: EmotionPoint[] = segments
+    .filter(s => s.arousal !== null && s.valence !== null)
+    .map((segment, index) => ({
+      id: segment.id || `seg-${index}`,
+      timestamp: Date.now() - (segments.length - index) * 5000,
+      formattedTime: `0:${String(index * 5).padStart(2, '0')}`,
+      arousal: segment.arousal || 4, // 生のVAD値を渡す（3.4-4.6の範囲）
+      valence: segment.valence || 4,
+      dominance: segment.dominance ?? undefined,
+      speaker: 'user' as const,
+      text: segment.text,
+      emotionLabel: segment.emotion_label || '中立',
+    }));
+
+  if (emotionData.length === 0) return null;
 
   return (
     <div className="mt-2">
-      {/* トグルボタン */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
         className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#FBF7F3] hover:bg-[#F5EBE0] transition-colors border border-[#F5EBE0]"
@@ -135,7 +137,6 @@ function EmotionChartToggle({ emotionData }: { emotionData: EmotionPoint[] }) {
         )}
       </button>
 
-      {/* グラフ表示エリア */}
       {isExpanded && (
         <div className="mt-2 p-4 rounded-[16px] bg-white shadow-[0_2px_8px_rgba(193,123,104,0.1)] border border-[#F5EBE0]">
           <div className="h-[140px] w-full">
@@ -147,16 +148,240 @@ function EmotionChartToggle({ emotionData }: { emotionData: EmotionPoint[] }) {
   );
 }
 
-export function AIDialogueWebPage() {
+export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit }: AIDialogueWebPageProps) {
+  const router = useRouter();
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('');
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [recordingLimit, setRecordingLimit] = useState(initialRecordingLimit);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const recordingDurationRef = useRef(0);
+
+  // 録音フック
+  const {
+    isRecording,
+    isStarting,
+    duration,
+    formattedDuration,
+    error,
+    stream,
+    startRecording,
+    stopRecording
+  } = useVoiceRecorder({
+    maxDuration: 60000,
+    onRecordingComplete: async (blob) => {
+      setIsProcessing(true);
+      try {
+        await handleRecordingComplete(blob, Math.ceil(recordingDurationRef.current / 1000));
+      } finally {
+        setIsProcessing(false);
+      }
+    }
+  });
+
+  const canvasRef = useAudioVisualizer(stream);
+
+  // 録音時間を追跡
+  if (isRecording) {
+    recordingDurationRef.current = duration;
+  }
+
+  // 初回ロード時に今日の対話履歴を取得
+  useEffect(() => {
+    loadTodayDialogue();
+  }, []);
+
+  // メッセージが追加されたら自動スクロール
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isLoading]);
+
+  const loadTodayDialogue = async () => {
+    const result = await getTodayDialogue();
+    if (result.success && result.messages) {
+      setMessages(result.messages as Message[]);
+    }
+  };
+
+  const handleRecordingComplete = async (blob: Blob, durationSec: number) => {
+    console.log('=== Chat Recording Complete ===');
+
+    setLoadingMessage('文字起こし中...');
+    setIsLoading(true);
+
+    try {
+      // 1. Upload to Supabase
+      const { uploadAudio } = await import('@/features/voice-diary/actions/uploadAudio');
+      const uploadResult = await uploadAudio(blob);
+
+      // 2. Call Whisper Segmented API
+      const whisperResponse = await fetch('/api/whisper-segmented', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          recordingId: uploadResult.recordingId,
+          filePath: uploadResult.filePath,
+        }),
+      });
+
+      if (!whisperResponse.ok) {
+        throw new Error('Whisper Segmented API failed');
+      }
+
+      const whisperData = await whisperResponse.json();
+
+      // 3. Call Emotion Analysis Segmented API
+      setLoadingMessage('感情分析中...');
+      const emotionResponse = await fetch('/api/analyze-emotion-segmented', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          recordingId: uploadResult.recordingId,
+          filePath: uploadResult.filePath,
+        }),
+      });
+
+      if (!emotionResponse.ok) {
+        console.warn('Emotion analysis failed, continuing without emotion data');
+      } else {
+        // 感情分析の結果を待つ（DBへの書き込み完了を確認）
+        await emotionResponse.json();
+      }
+
+      // 4. transcription_segmentsからセグメントデータを取得（感情分析完了後）
+      const { createClient } = await import('@/lib/supabase/client');
+      const supabase = createClient();
+
+      const { data: transcriptionSegments } = await supabase
+        .from('transcription_segments')
+        .select('id, text, start_time, end_time, emotion_label, arousal, valence, dominance')
+        .eq('recording_id', uploadResult.recordingId)
+        .order('segment_index', { ascending: true });
+
+      // 5. 平均VAD値を計算
+      let avgArousal = 0;
+      let avgValence = 0;
+      let avgDominance = 0;
+
+      if (transcriptionSegments && transcriptionSegments.length > 0) {
+        const validSegments = transcriptionSegments.filter(
+          s => s.arousal !== null && s.valence !== null && s.dominance !== null
+        );
+
+        if (validSegments.length > 0) {
+          avgArousal = validSegments.reduce((sum, s) => sum + s.arousal!, 0) / validSegments.length;
+          avgValence = validSegments.reduce((sum, s) => sum + s.valence!, 0) / validSegments.length;
+          avgDominance = validSegments.reduce((sum, s) => sum + s.dominance!, 0) / validSegments.length;
+        }
+      }
+
+      // 6. ユーザーメッセージをUIに追加
+      const userMessage: Message = {
+        role: 'user',
+        content: whisperData.text,
+        timestamp: new Date().toISOString(),
+        segments: transcriptionSegments || undefined,
+        emotionData: transcriptionSegments && transcriptionSegments.length > 0 ? {
+          segments: transcriptionSegments,
+          total_segments: transcriptionSegments.length,
+          avg_arousal: avgArousal,
+          avg_valence: avgValence,
+          avg_dominance: avgDominance
+        } : undefined
+      };
+
+      setMessages(prev => [...prev, userMessage]);
+
+      // 7. AI応答生成
+      setLoadingMessage('AIが考えています...');
+
+      const aiResponse = await fetch('/api/ai-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          userMessage: whisperData.text,
+          recordingId: uploadResult.recordingId,
+        }),
+      });
+
+      if (!aiResponse.ok) {
+        throw new Error('AI Chat API failed');
+      }
+
+      const aiData = await aiResponse.json();
+
+      // 8. AI応答をチャットに追加
+      const aiMessage: Message = {
+        role: 'assistant',
+        content: aiData.response,
+        timestamp: new Date().toISOString()
+      };
+      setMessages(prev => [...prev, aiMessage]);
+      setIsLoading(false);
+
+      // 9. 録音回数を更新
+      setRecordingLimit(prev => ({
+        ...prev,
+        used: prev.used + 1,
+        remaining: Math.max(0, prev.remaining - 1)
+      }));
+
+    } catch (error) {
+      console.error('Error processing recording:', error);
+      setIsLoading(false);
+    }
+  };
+
+  const generateSummaryAndRedirect = async () => {
+    setIsGeneratingSummary(true);
+    setLoadingMessage('日記を生成しています...');
+    setIsLoading(true);
+
+    try {
+      const date = new Date().toISOString().split('T')[0];
+
+      const response = await fetch('/api/generate-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ date }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Summary generation failed');
+      }
+
+      // 日記詳細ページに遷移
+      router.push(`/diary-detail-web?date=${date}`);
+
+    } catch (error) {
+      console.error('Error generating summary:', error);
+      setIsLoading(false);
+      setIsGeneratingSummary(false);
+    }
+  };
+
+  const formatTime = (timestamp: string) => {
+    return new Date(timestamp).toLocaleTimeString('ja-JP', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
   return (
     <div className="flex w-[1440px] h-screen" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif' }}>
       {/* Sidebar */}
-      <WebSidebar activeItem="dialogue" />
+      <WebSidebar activeItem="dialogue" user={user} />
 
       {/* Main Content */}
-      <main className="overflow-x-hidden flex grow shrink bg-[#FBF7F3] h-full">
-        {/* Chat History Column */}
-        <div className="flex flex-col grow shrink py-8 pl-8 pr-4 h-full">
+      <main className="overflow-x-hidden flex bg-[#FBF7F3] h-full">
+        {/* Chat History Column - flex-1でスペースを埋め、min-w-0でshrink可能に */}
+        <div className="flex flex-col flex-1 min-w-0 py-8 pl-8 pr-4 h-full">
           {/* Page Header */}
           <div className="mb-8">
             <h1 className="text-4xl mb-2 font-semibold text-[#3D3632]">AIとの対話</h1>
@@ -166,28 +391,54 @@ export function AIDialogueWebPage() {
           <div className="flex flex-col grow shrink p-6 rounded-[20px] bg-white/85 shadow-[0_2px_8px_rgba(193,123,104,0.12),0_1px_3px_rgba(107,95,88,0.06)] min-h-0">
             <h2 className="text-2xl mb-6 font-semibold text-[#3D3332]">対話履歴</h2>
             <div className="overflow-y-auto flex-1 min-h-0 pr-4">
-              {mockEmotionData.map((message) => (
-                <div key={message.id} className={`flex ${message.speaker === 'user' ? 'justify-end' : 'justify-start'} mb-6`}>
-                  <div className={message.speaker === 'user' ? 'max-w-[85%]' : 'max-w-[80%]'}>
-                    <div className={`p-4 rounded-[16px] ${message.speaker === 'user' ? 'rounded-br-[4px] bg-[#C17B68]/15' : 'rounded-bl-[4px] bg-white/70 shadow-[0_2px_6px_rgba(193,123,104,0.12)]'}`}>
-                      {message.speaker === 'user' && message.transcript ? (
-                        <ColoredTranscript segments={message.transcript} />
+              {messages.length === 0 && !isLoading && (
+                <div className="text-center text-[#6B5F58] py-8">
+                  <p className="text-lg">録音ボタンを押して、今日の気持ちを話してみましょう</p>
+                  <p className="text-base mt-2">AIがあなたの本音を引き出すお手伝いをします</p>
+                </div>
+              )}
+
+              {messages.map((message, index) => (
+                <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'} mb-6`}>
+                  <div className={message.role === 'user' ? 'max-w-[85%]' : 'max-w-[80%]'}>
+                    <div className={`p-4 rounded-[16px] ${message.role === 'user' ? 'rounded-br-[4px] bg-white shadow-[0_2px_6px_rgba(193,123,104,0.12)]' : 'rounded-bl-[4px] bg-[#C17B68]/15'}`}>
+                      {message.role === 'user' && message.segments && message.segments.length > 0 ? (
+                        <ColoredTranscript segments={message.segments} />
                       ) : (
-                        <p className="text-lg text-[#3D3632]">{message.text}</p>
+                        <p className="text-lg text-[#3D3632]">{message.content}</p>
                       )}
                     </div>
 
                     {/* ユーザー発話の場合、感情グラフトグルを表示 */}
-                    {message.speaker === 'user' && message.emotionData && (
-                      <EmotionChartToggle emotionData={message.emotionData} />
+                    {message.role === 'user' && message.segments && message.segments.length > 0 && (
+                      <EmotionChartToggle segments={message.segments} />
                     )}
 
-                    <div className={`flex items-center gap-2 mt-2 ${message.speaker === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      <span className="text-base text-[#9A8D85]">{message.formattedTime}</span>
+                    <div className={`flex items-center gap-2 mt-2 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      <span className="text-base text-[#9A8D85]">{formatTime(message.timestamp)}</span>
                     </div>
                   </div>
                 </div>
               ))}
+
+              {isLoading && (
+                <div className={`flex ${loadingMessage.includes('AI') ? 'justify-start' : 'justify-end'} mb-6`}>
+                  <div className={loadingMessage.includes('AI') ? 'max-w-[80%]' : 'max-w-[85%]'}>
+                    <div className={`p-4 rounded-[16px] ${loadingMessage.includes('AI') ? 'rounded-bl-[4px] bg-[#C17B68]/15' : 'rounded-br-[4px] bg-white shadow-[0_2px_6px_rgba(193,123,104,0.12)]'}`}>
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-1">
+                          <div className="w-2 h-2 bg-[#C17B68] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <div className="w-2 h-2 bg-[#C17B68] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <div className="w-2 h-2 bg-[#C17B68] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                        </div>
+                        <span className="text-base text-[#6B5F58]">{loadingMessage}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div ref={messagesEndRef} />
             </div>
           </div>
         </div>
@@ -200,44 +451,91 @@ export function AIDialogueWebPage() {
           </div>
           <div className="flex flex-col items-center p-8 rounded-[20px] bg-white/85 shadow-[0_2px_8px_rgba(193,123,104,0.12),0_1px_3px_rgba(107,95,88,0.06)]">
             <h2 className="text-2xl mb-8 font-semibold text-[#3D3632]">音声録音</h2>
+
             {/* Recording Button */}
             <div className="mb-8">
-              <button className="flex justify-center items-center w-32 h-32 rounded-full bg-[#C17B68] shadow-[0_4px_16px_rgba(193,123,104,0.3)] hover:shadow-[0_8px_24px_rgba(193,123,104,0.4)] transition-shadow">
-                <Mic className="text-4xl text-white/85" size={48} />
-              </button>
+              {!isRecording ? (
+                <button
+                  onClick={startRecording}
+                  disabled={isProcessing || recordingLimit.remaining <= 0}
+                  className="flex justify-center items-center w-32 h-32 rounded-full bg-[#C17B68] shadow-[0_4px_16px_rgba(193,123,104,0.3)] hover:shadow-[0_8px_24px_rgba(193,123,104,0.4)] transition-shadow disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isProcessing ? (
+                    <Loader2 className="text-4xl text-white/85 animate-spin" size={48} />
+                  ) : (
+                    <Mic className="text-4xl text-white/85" size={48} />
+                  )}
+                </button>
+              ) : (
+                <button
+                  onClick={stopRecording}
+                  className="flex justify-center items-center w-32 h-32 rounded-full bg-red-500 shadow-[0_4px_16px_rgba(239,68,68,0.3)] hover:shadow-[0_8px_24px_rgba(239,68,68,0.4)] transition-shadow animate-pulse"
+                >
+                  <Square className="text-4xl text-white/85" size={48} />
+                </button>
+              )}
             </div>
+
             {/* Timer */}
             <div className="mb-8">
-              <div className="text-3xl text-center font-semibold text-[#C17B68]">00:00</div>
-              <div className="text-base text-center mt-1 text-[#6B5F58]">録音時間</div>
+              <div className="text-3xl text-center font-semibold text-[#C17B68]">
+                {isRecording || isStarting ? formattedDuration : '00:00'}
+              </div>
+              <div className="text-base text-center mt-1 text-[#6B5F58]">
+                {isRecording ? '録音中...' : isProcessing ? '処理中...' : '録音時間'}
+              </div>
             </div>
+
             {/* Waveform Visualization */}
-            <div className="flex justify-center items-center gap-1 mb-8">
-              <div className="w-1 h-2 rounded-full bg-[#C17B68]"></div>
-              <div className="w-1 h-2 rounded-full bg-[#C17B68]"></div>
-              <div className="w-1 h-2 rounded-full bg-[#C17B68]"></div>
-              <div className="w-1 h-2 rounded-full bg-[#C17B68]"></div>
-              <div className="w-1 h-2 rounded-full bg-[#C17B68]"></div>
+            <div className="mb-8 w-full">
+              {(isRecording || isStarting) ? (
+                <div className="h-16 rounded-xl bg-[#C17B68]/10 overflow-hidden">
+                  <canvas ref={canvasRef} width={300} height={64} className="w-full h-full" />
+                </div>
+              ) : (
+                <div className="flex justify-center items-center gap-1 h-16">
+                  <div className="w-1 h-2 rounded-full bg-[#C17B68]"></div>
+                  <div className="w-1 h-2 rounded-full bg-[#C17B68]"></div>
+                  <div className="w-1 h-2 rounded-full bg-[#C17B68]"></div>
+                  <div className="w-1 h-2 rounded-full bg-[#C17B68]"></div>
+                  <div className="w-1 h-2 rounded-full bg-[#C17B68]"></div>
+                </div>
+              )}
             </div>
+
             {/* Recording Count */}
             <div className="text-center w-full p-4 rounded-[12px] bg-[#A8B89F]/10">
               <div className="text-lg font-semibold text-[#3D3632]">残り録音回数</div>
               <div className="flex justify-center items-center gap-2 mt-2">
-                <span className="text-2xl font-semibold text-[#C17B68]">3</span>
-                <span className="text-lg text-[#6B5F58]">/ 5回</span>
+                <span className="text-2xl font-semibold text-[#C17B68]">{recordingLimit.remaining}</span>
+                <span className="text-lg text-[#6B5F58]">/ {recordingLimit.total}回</span>
               </div>
               <div className="mt-3">
                 <div className="h-2 rounded-full bg-[#A8B89F]/20">
-                  <div className="h-full rounded-full bg-[#A8B89F] w-[60%]"></div>
+                  <div
+                    className="h-full rounded-full bg-[#A8B89F]"
+                    style={{ width: `${(recordingLimit.used / recordingLimit.total) * 100}%` }}
+                  ></div>
                 </div>
               </div>
             </div>
+
+            {error && (
+              <div className="mt-4 text-sm text-red-500 text-center">{error}</div>
+            )}
           </div>
+
           {/* Generate Diary Button */}
           <div className="mt-8">
-            <button className="flex justify-center items-center gap-3 w-full py-4 px-6 rounded-full bg-[#B8CAB0] text-white/85 shadow-[0_2px_8px_rgba(184,202,176,0.25)] hover:shadow-[0_4px_12px_rgba(193,123,104,0.35)] transition-shadow">
+            <button
+              onClick={generateSummaryAndRedirect}
+              disabled={isGeneratingSummary || messages.filter(m => m.role === 'user').length < 2}
+              className="flex justify-center items-center gap-3 w-full py-4 px-6 rounded-full bg-[#4A7C59] text-white shadow-[0_2px_8px_rgba(74,124,89,0.3)] hover:bg-[#3D6B4A] hover:shadow-[0_4px_12px_rgba(74,124,89,0.4)] transition-all disabled:bg-[#D4DED0] disabled:text-white/60 disabled:cursor-not-allowed disabled:shadow-none"
+            >
               <FileText className="text-lg" size={18} />
-              <span className="text-lg whitespace-nowrap font-semibold">日記を生成</span>
+              <span className="text-lg whitespace-nowrap font-semibold">
+                {isGeneratingSummary ? '生成中...' : '日記を生成'}
+              </span>
             </button>
           </div>
         </div>
