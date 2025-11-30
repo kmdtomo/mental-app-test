@@ -158,11 +158,20 @@ export function DashboardWebPage({ user, summaries, hasTodayDiary, recordingLimi
                   <p className="text-base text-[#6B5F58]">{formatTodayDate()}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <div className={`w-3 h-3 rounded-full ${hasTodayDiary ? 'bg-[#B8CAB0]' : 'bg-[#C4BCB6]'}`}></div>
-                <span className="text-lg font-semibold text-[#3D3632]">
-                  {hasTodayDiary ? '記録済み' : '未記録'}
-                </span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className={`w-3 h-3 rounded-full ${recordingLimit.used > 0 ? 'bg-[#B8CAB0]' : 'bg-[#C4BCB6]'}`}></div>
+                  <span className="text-lg font-semibold text-[#3D3632]">
+                    {recordingLimit.used > 0 ? '記録済み' : '未記録'}
+                  </span>
+                </div>
+                {recordingLimit.used > 0 && (
+                  <Link href={`/diary-detail-web?date=${todayStr}`}>
+                    <button className="px-4 py-2 rounded-full bg-[#B8CAB0] text-white text-sm font-semibold hover:bg-[#A8B89F] transition-colors shadow-[0_2px_6px_rgba(184,202,176,0.3)]">
+                      詳細を見る
+                    </button>
+                  </Link>
+                )}
               </div>
             </div>
 

@@ -151,8 +151,9 @@ function EmotionChartToggle({ segments }: { segments: Segment[] }) {
 export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit }: AIDialogueWebPageProps) {
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [loadingMessage, setLoadingMessage] = useState('');
+  const [isProcessingUser, setIsProcessingUser] = useState(false);  // ユーザー側の処理中（文字起こし・感情分析）
+  const [userLoadingMessage, setUserLoadingMessage] = useState('');
+  const [isProcessingAI, setIsProcessingAI] = useState(false);      // AI側の処理中（応答生成）
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [recordingLimit, setRecordingLimit] = useState(initialRecordingLimit);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -196,7 +197,7 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit 
   // メッセージが追加されたら自動スクロール
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isLoading]);
+  }, [messages, isProcessingUser, isProcessingAI]);
 
   const loadTodayDialogue = async () => {
     const result = await getTodayDialogue();
@@ -208,8 +209,8 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit 
   const handleRecordingComplete = async (blob: Blob, durationSec: number) => {
     console.log('=== Chat Recording Complete ===');
 
-    setLoadingMessage('文字起こし中...');
-    setIsLoading(true);
+    setUserLoadingMessage('文字起こし中...');
+    setIsProcessingUser(true);
 
     try {
       // 1. Upload to Supabase
@@ -234,7 +235,7 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit 
       const whisperData = await whisperResponse.json();
 
       // 3. Call Emotion Analysis Segmented API
-      setLoadingMessage('感情分析中...');
+      setUserLoadingMessage('感情分析中...');
       const emotionResponse = await fetch('/api/analyze-emotion-segmented', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -245,41 +246,45 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit 
         }),
       });
 
-      if (!emotionResponse.ok) {
-        console.warn('Emotion analysis failed, continuing without emotion data');
-      } else {
-        // 感情分析の結果を待つ（DBへの書き込み完了を確認）
-        await emotionResponse.json();
-      }
-
-      // 4. transcription_segmentsからセグメントデータを取得（感情分析完了後）
-      const { createClient } = await import('@/lib/supabase/client');
-      const supabase = createClient();
-
-      const { data: transcriptionSegments } = await supabase
-        .from('transcription_segments')
-        .select('id, text, start_time, end_time, emotion_label, arousal, valence, dominance')
-        .eq('recording_id', uploadResult.recordingId)
-        .order('segment_index', { ascending: true });
-
-      // 5. 平均VAD値を計算
+      // 4. 感情分析結果を取得（APIレスポンスを直接使用）
+      let transcriptionSegments: Segment[] | null = null;
       let avgArousal = 0;
       let avgValence = 0;
       let avgDominance = 0;
 
-      if (transcriptionSegments && transcriptionSegments.length > 0) {
-        const validSegments = transcriptionSegments.filter(
-          s => s.arousal !== null && s.valence !== null && s.dominance !== null
-        );
+      if (!emotionResponse.ok) {
+        console.warn('Emotion analysis failed, continuing without emotion data');
+      } else {
+        // 感情分析APIのレスポンスを直接使用（DBを再クエリしない）
+        const emotionData = await emotionResponse.json();
 
-        if (validSegments.length > 0) {
-          avgArousal = validSegments.reduce((sum, s) => sum + s.arousal!, 0) / validSegments.length;
-          avgValence = validSegments.reduce((sum, s) => sum + s.valence!, 0) / validSegments.length;
-          avgDominance = validSegments.reduce((sum, s) => sum + s.dominance!, 0) / validSegments.length;
+        if (emotionData.success && emotionData.segments && emotionData.segments.length > 0) {
+          // APIレスポンスのセグメントをSegment型にマッピング
+          transcriptionSegments = emotionData.segments.map((seg: any) => ({
+            id: seg.id,
+            text: seg.text,
+            start_time: seg.start_time,
+            end_time: seg.end_time,
+            emotion_label: seg.emotion_label,
+            arousal: seg.arousal,
+            valence: seg.valence,
+            dominance: seg.dominance,
+          }));
+
+          // 平均VAD値を計算
+          const validSegments = transcriptionSegments!.filter(
+            s => s.arousal !== null && s.valence !== null && s.dominance !== null
+          );
+
+          if (validSegments.length > 0) {
+            avgArousal = validSegments.reduce((sum, s) => sum + s.arousal!, 0) / validSegments.length;
+            avgValence = validSegments.reduce((sum, s) => sum + s.valence!, 0) / validSegments.length;
+            avgDominance = validSegments.reduce((sum, s) => sum + s.dominance!, 0) / validSegments.length;
+          }
         }
       }
 
-      // 6. ユーザーメッセージをUIに追加
+      // 5. ユーザーメッセージをUIに追加
       const userMessage: Message = {
         role: 'user',
         content: whisperData.text,
@@ -296,8 +301,9 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit 
 
       setMessages(prev => [...prev, userMessage]);
 
-      // 7. AI応答生成
-      setLoadingMessage('AIが考えています...');
+      // ユーザー側のローディング終了、AI側のローディング開始
+      setIsProcessingUser(false);
+      setIsProcessingAI(true);
 
       const aiResponse = await fetch('/api/ai-chat', {
         method: 'POST',
@@ -315,16 +321,16 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit 
 
       const aiData = await aiResponse.json();
 
-      // 8. AI応答をチャットに追加
+      // 7. AI応答をチャットに追加
       const aiMessage: Message = {
         role: 'assistant',
         content: aiData.response,
         timestamp: new Date().toISOString()
       };
       setMessages(prev => [...prev, aiMessage]);
-      setIsLoading(false);
+      setIsProcessingAI(false);
 
-      // 9. 録音回数を更新
+      // 8. 録音回数を更新
       setRecordingLimit(prev => ({
         ...prev,
         used: prev.used + 1,
@@ -333,14 +339,13 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit 
 
     } catch (error) {
       console.error('Error processing recording:', error);
-      setIsLoading(false);
+      setIsProcessingUser(false);
+      setIsProcessingAI(false);
     }
   };
 
   const generateSummaryAndRedirect = async () => {
     setIsGeneratingSummary(true);
-    setLoadingMessage('日記を生成しています...');
-    setIsLoading(true);
 
     try {
       const date = new Date().toISOString().split('T')[0];
@@ -361,7 +366,6 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit 
 
     } catch (error) {
       console.error('Error generating summary:', error);
-      setIsLoading(false);
       setIsGeneratingSummary(false);
     }
   };
@@ -379,7 +383,7 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit 
       <WebSidebar activeItem="dialogue" user={user} />
 
       {/* Main Content */}
-      <main className="overflow-x-hidden flex bg-[#FBF7F3] h-full">
+      <main className="overflow-x-hidden flex bg-[#FBF7F3] h-full flex-1">
         {/* Chat History Column - flex-1でスペースを埋め、min-w-0でshrink可能に */}
         <div className="flex flex-col flex-1 min-w-0 py-8 pl-8 pr-4 h-full">
           {/* Page Header */}
@@ -391,7 +395,7 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit 
           <div className="flex flex-col grow shrink p-6 rounded-[20px] bg-white/85 shadow-[0_2px_8px_rgba(193,123,104,0.12),0_1px_3px_rgba(107,95,88,0.06)] min-h-0">
             <h2 className="text-2xl mb-6 font-semibold text-[#3D3332]">対話履歴</h2>
             <div className="overflow-y-auto flex-1 min-h-0 pr-4">
-              {messages.length === 0 && !isLoading && (
+              {messages.length === 0 && !isProcessingUser && !isProcessingAI && (
                 <div className="text-center text-[#6B5F58] py-8">
                   <p className="text-lg">録音ボタンを押して、今日の気持ちを話してみましょう</p>
                   <p className="text-base mt-2">AIがあなたの本音を引き出すお手伝いをします</p>
@@ -421,17 +425,36 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit 
                 </div>
               ))}
 
-              {isLoading && (
-                <div className={`flex ${loadingMessage.includes('AI') ? 'justify-start' : 'justify-end'} mb-6`}>
-                  <div className={loadingMessage.includes('AI') ? 'max-w-[80%]' : 'max-w-[85%]'}>
-                    <div className={`p-4 rounded-[16px] ${loadingMessage.includes('AI') ? 'rounded-bl-[4px] bg-[#C17B68]/15' : 'rounded-br-[4px] bg-white shadow-[0_2px_6px_rgba(193,123,104,0.12)]'}`}>
+              {/* ユーザー側ローディング（文字起こし・感情分析中）- 右側 */}
+              {isProcessingUser && (
+                <div className="flex justify-end mb-6">
+                  <div className="max-w-[85%]">
+                    <div className="p-4 rounded-[16px] rounded-br-[4px] bg-white shadow-[0_2px_6px_rgba(193,123,104,0.12)]">
                       <div className="flex items-center gap-3">
                         <div className="flex items-center gap-1">
                           <div className="w-2 h-2 bg-[#C17B68] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                           <div className="w-2 h-2 bg-[#C17B68] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                           <div className="w-2 h-2 bg-[#C17B68] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                         </div>
-                        <span className="text-base text-[#6B5F58]">{loadingMessage}</span>
+                        <span className="text-base text-[#6B5F58]">{userLoadingMessage}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* AI側ローディング（応答生成中）- 左側 */}
+              {isProcessingAI && (
+                <div className="flex justify-start mb-6">
+                  <div className="max-w-[80%]">
+                    <div className="p-4 rounded-[16px] rounded-bl-[4px] bg-[#C17B68]/15">
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-1">
+                          <div className="w-2 h-2 bg-[#C17B68] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <div className="w-2 h-2 bg-[#C17B68] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <div className="w-2 h-2 bg-[#C17B68] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                        </div>
+                        <span className="text-base text-[#6B5F58]">AIが考えています...</span>
                       </div>
                     </div>
                   </div>
@@ -526,7 +549,7 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit 
           </div>
 
           {/* Generate Diary Button */}
-          <div className="mt-8">
+          <div className="mt-2">
             <button
               onClick={generateSummaryAndRedirect}
               disabled={isGeneratingSummary || messages.filter(m => m.role === 'user').length < 2}

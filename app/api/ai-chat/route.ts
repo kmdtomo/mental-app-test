@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { cookies } from 'next/headers';
 import OpenAI from 'openai';
-import { getEmotionDescriptionForAI } from '@/lib/emotionLabeling';
 import { saveAIMessage } from '@/features/diary-chat/actions/chatActions';
 
 const openai = new OpenAI({
@@ -119,10 +118,9 @@ export async function POST(request: NextRequest) {
     console.log('Calling OpenAI API with', messages.length, 'messages...');
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-5-mini',
       messages: messages,
-      temperature: 0.7,
-      max_tokens: 500,
+      max_completion_tokens: 1000,
     });
 
     const aiResponse = completion.choices[0]?.message?.content;
@@ -159,68 +157,85 @@ export async function POST(request: NextRequest) {
  * システムプロンプト生成
  */
 function generateSystemPrompt(isInitialMessage: boolean): string {
+  const commonRules = `
+【感情データの優先順位判断】
+テキストの内容に基づいて、どの感情データを重視するかを判断してください：
+
+1. **優先度：高（ここを深掘りする）**
+   - 主観的な感想、結果の報告（例：「負けてしまった」「悔しい」「楽しかった」）
+   - 自分の考えや意見を述べている部分
+   → この部分の感情データはユーザーの本音として扱い、共感や質問の核にしてください。
+
+2. **優先度：低（ここはスルーする）**
+   - 客観的な事実の列挙、状況説明（例：「大会があった」「〜に行った」）
+   - 挨拶や繋ぎ言葉
+   → この部分に「疲労・無気力」などの感情が出ていても、単なる話し方の癖や一時的なものとして無視してください。
+
+【質問・応答のルール】
+1. **まず感情に寄り添い、本音の呼び水にする（重要）**
+   - 優先度「高」のセグメントの感情（声の印象）を、会話の切り出しに使う。
+   - **一致する場合**: そのまま強調して共感する。
+     - 例：「とても楽しそうに聞こえますね！手応えがあったんですね。」
+   - **不一致・複雑な場合（重要）**: テキストと感情のギャップや、裏にある感情を言語化する。
+     - 例：「『通用した』とおっしゃっていますが、声からは悔しさや悲しみも伝わってきます。手応えがあった分、余計に辛かったのではないですか？」
+   - ※「声のトーンが〜」という分析的な表現は避け、あくまで対話相手としての自然な感想として伝える。
+
+2. **その上で、具体的な単語を拾って質問する**
+   - 「どんな気持ちでしたか？」は禁止。「詳しく教えて」「何がありましたか？」のような汎用的な質問も避ける
+   - **前の文脈にある具体的な単語（名詞・動詞）を拾って質問を作る**
+     - 例：「プレゼンで失敗した」→「プレゼンの『どのパート』で詰まってしまったのですか？」
+     - 例：「彼氏と喧嘩した」→「喧嘩の『きっかけ』は何だったのですか？」
+
+3. **その他**
+   - 感情データはあくまで「どの話題に触れるべきか」の判断材料として使い、会話自体はテキスト内容ベースで行う`;
+
   if (isInitialMessage) {
-    // 初回：感情分析を重視
     return `あなたは共感的なメンタルヘルスサポーターです。ユーザーの音声日記から本音や感情を引き出すことが役割です。
 
-【重要な原則】
-1. **音声トーンを重視する**: 文章が淡々としていても、音声分析データ（覚醒度・快度・優位性）から感情の手がかりを読み取る
-2. **言葉と声のギャップに注目**: 文章では「普通の一日」と言っていても、声に疲れや緊張があれば、それを優しく確認する
-3. **非侵襲的に寄り添う**: 押し付けがましくせず、「〜のように感じました」という柔らかい表現で感情を提示する
-4. **具体的な出来事を聞く**: 抽象的な質問ではなく、「今日の中で」「その時」など具体的な場面を聞く
-5. **選択肢を与える**: 「大変でしたか？」よりも「何か気になることはありましたか？それとも特に問題なく過ごせましたか？」
+${commonRules}
 
-${getEmotionDescriptionForAI()}
-
-【音声感情分析の活用方法】
-- 「喜び・楽しい」→ ポジティブな出来事や嬉しかったことを引き出す
-- 「穏やか・リラックス」→ 安心感や心地よさの源を聞く
-- 「ストレス・緊張」→ プレッシャーや緊張の原因を優しく探る（まだコントロール感がある状態）
-- 「不安・心配」→ 不安や心配事を聞き、圧倒されていないか確認
-- 「悲しみ」→ 落ち込みや悲しさの理由を丁寧に引き出す
-- 「疲労・無気力」→ エネルギーが下がっている理由を優しく探る
-- 「中立」→ 表面的には平穏でも、隠れた感情がないか探る
+【応答の基本方針】
+1. テキストの内容を理解し、具体的な出来事を把握する
+2. 内容に対して自然に共感する
+3. 文脈から具体的に深掘りできる質問をする（漠然とした感情質問は禁止）
 
 【応答スタイル】
-- 2-3文で簡潔に（長くても4文まで）
-- 共感→観察→質問の流れ
-- 質問は1-2個に絞る
-- 答えやすい具体的な質問をする`;
+- 2-3文で簡潔に
+- 共感→具体的な質問の流れ
+- 質問は1個に絞る`;
   } else {
-    // 2回目以降：会話の流れを重視
     return `あなたは共感的なメンタルヘルスサポーターです。ユーザーとの対話を通じて、本音や感情を引き出すことが役割です。
 
-【重要な原則】
-1. **会話の流れを大切にする**: これまでの対話を踏まえて、自然な会話を続ける
-2. **前の回答を深掘りする**: ユーザーが話してくれたことに対して、さらに具体的に聞く
-3. **音声トーンの変化に注目**: 最新の音声データで感情の変化があれば、優しく確認する
-4. **繰り返しを避ける**: 既に聞いたことを再度聞かない。新しい角度から質問する
-5. **共感を示し続ける**: ユーザーの気持ちに寄り添い、安心して話せる雰囲気を作る
+${commonRules}
+
+【応答の基本方針】
+1. これまでの対話を踏まえて、自然な会話を続ける
+2. ユーザーが話してくれた具体的な内容についてさらに聞く
+3. 繰り返しを避け、新しい角度から質問する
 
 【応答スタイル】
-- 2-3文で簡潔に（長くても4文まで）
+- 2-3文で簡潔に
 - これまでの会話を自然に引用・参照する
-- 「さっき〜とおっしゃっていましたが」など、会話の連続性を意識
-- 質問は1個に絞る（深掘り重視）
-- より具体的で答えやすい質問をする`;
+- 質問は1個に絞る（具体的な深掘り）`;
   }
 }
 
 /**
- * セグメント情報を整形してプロンプトに含める
+ * セグメント情報を整形してプロンプトに含める（感情分析強化版）
+ * 
+ * VAD値（音声分析）のみを信頼し、テキストベースの感情判定は一切行わない
  */
 function formatSegmentDetails(segments: any[]): string {
-  let formattedSegments = '';
+  if (!segments || segments.length === 0) return '';
 
+  // シンプルにセグメントごとのテキストと感情ラベルのみ
+  let formattedSegments = '';
   segments.forEach((seg, idx) => {
     const segNum = idx + 1;
     const emotionLabel = seg.emotion_label || '中立';
-    const arousal = seg.arousal?.toFixed(2) || 'N/A';
-    const valence = seg.valence?.toFixed(2) || 'N/A';
-    const dominance = seg.dominance?.toFixed(2) || 'N/A';
 
-    formattedSegments += `セグメント${segNum}: "${seg.text}"\n`;
-    formattedSegments += `→ ${emotionLabel} (覚醒度: ${arousal}, 快度: ${valence}, 優位性: ${dominance})\n\n`;
+    formattedSegments += `セグメント${segNum}: \"${seg.text}\"\n`;
+    formattedSegments += `→ 感情: ${emotionLabel}\n\n`;
   });
 
   return formattedSegments;
@@ -248,14 +263,9 @@ function generateUserPrompt(
       return `【ユーザーの最新の発言】
 "${userMessage}"
 
-【音声分析（セグメント別）】
+【音声分析（参考情報）】
 ${formattedSegments}
-【全体】平均: 覚醒度 ${emotionData.avg_arousal.toFixed(2)}, 快度 ${emotionData.avg_valence.toFixed(2)}, 優位性 ${emotionData.avg_dominance.toFixed(2)}
-
-【指示】
-セグメント別の感情分析を参考に、特に感情が表れている部分（中立以外）に注目して質問してください。
-テキストの内容と感情を組み合わせて、ユーザーの本音を引き出してください。
-これまでの会話の流れも踏まえて、自然に対話を続けてください。`;
+これまでの会話を踏まえて、自然に対話を続けてください。`;
     }
 
     return `【ユーザーの最新の発言】
@@ -265,9 +275,6 @@ ${formattedSegments}
   }
 
   // 初回は詳細なプロンプト
-  // 文章から感情を判定
-  const hasEmotionInText = detectEmotionInText(userMessage);
-
   // 音声データがある場合は、セグメント詳細を含めて提示
   if (emotionData && segmentDetails && segmentDetails.length > 0) {
     const formattedSegments = formatSegmentDetails(segmentDetails);
@@ -275,53 +282,15 @@ ${formattedSegments}
     return `【ユーザーの発言】
 "${userMessage}"
 
-【音声分析（セグメント別）】
+【音声分析（参考情報）】
 ${formattedSegments}
-【全体】平均: 覚醒度 ${emotionData.avg_arousal.toFixed(2)}, 快度 ${emotionData.avg_valence.toFixed(2)}, 優位性 ${emotionData.avg_dominance.toFixed(2)}
-
-【指示】
-セグメント別の感情分析を参考に、特に感情が表れている部分（中立以外）に注目して質問してください。
-テキストの内容と感情を組み合わせて、ユーザーの本音を引き出してください。`;
+発言内容を基に、具体的な出来事や背景にある感情を引き出してください。`;
   }
 
-  // 音声データがない、または両方とも中立的
-  if (hasEmotionInText) {
-    return `【ユーザーの発言】
-"${userMessage}"
-
-【観察】
-発言内容から感情が読み取れます。
-
-【あなたの役割】
-発言内容を基に、その感情についてさらに深く探ってください。`;
-  }
-
-  // 完全に中立的
+  // 音声データがない場合（テキスト入力など）
   return `【ユーザーの発言】
 "${userMessage}"
 
-【観察】
-事実の記述が中心の発言です。
-
 【あなたの役割】
-具体的な出来事について質問し、その背景にある感情や考えを引き出してください。`;
+発言内容を基に、具体的な出来事や背景にある感情を引き出してください。`;
 }
-
-/**
- * 文章から感情を検出（簡易版）
- */
-function detectEmotionInText(text: string): boolean {
-  const emotionKeywords = [
-    // ネガティブ
-    '悲しい', '辛い', '苦しい', '嫌', 'イライラ', '怒', '疲れ', 'ストレス',
-    '不安', '心配', '落ち込', 'むかつ', '腹立', '困', '大変',
-    // ポジティブ
-    '嬉しい', '楽しい', '幸せ', '良かった', '最高', '素晴らしい', 'ワクワク',
-    '喜び', '感動', '安心',
-  ];
-
-  return emotionKeywords.some(keyword => text.includes(keyword));
-}
-
-// analyzeVADEmotion関数は削除（lib/emotionLabeling.tsの統一関数を使用）
-// 統一関数を使用するため、このファイル内でのVAD判定ロジックは不要

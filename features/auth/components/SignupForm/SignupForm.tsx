@@ -31,7 +31,7 @@ export function SignupForm({ className, ...props }: UserSignupFormProps) {
           title: "成功",
           description: "ユーザーの登録に成功しました",
         });
-        redirect("/voice-diary");
+        redirect("/dashboard-web");
       } else {
         toast({
           title: "エラー",

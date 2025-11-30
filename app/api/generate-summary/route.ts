@@ -99,65 +99,53 @@ export async function POST(request: NextRequest) {
       ?.map(turn => `${turn.role === 'user' ? 'ユーザー' : 'AI'}: ${turn.content}`)
       .join('\n\n') || '';
 
-    let emotionResults = [];
-    let totalSegments = 0;
-    let sumArousal = 0;
-    let sumValence = 0;
-    let sumDominance = 0;
     const emotionCounts: Record<string, number> = {};
+    const allEmotionLabels: string[] = [];
 
+    // transcription_segmentsから感情ラベルを取得
     if (recordingIds.length > 0) {
-      const { data: emotions, error: emotionError } = await supabase
-        .from('emotion_analysis_results')
-        .select('avg_arousal, avg_valence, avg_dominance, dominant_emotion, segments, total_segments')
-        .in('recording_id', recordingIds);
+      const { data: segments, error: segmentError } = await supabase
+        .from('transcription_segments')
+        .select('emotion_label, segment_index, recording_id')
+        .in('recording_id', recordingIds)
+        .order('recording_id', { ascending: true })
+        .order('segment_index', { ascending: true });
 
-      if (!emotionError && emotions) {
-        emotionResults = emotions;
-
-        // 感情データを集計
-        for (const emotion of emotions) {
-          if (emotion.avg_arousal) sumArousal += emotion.avg_arousal;
-          if (emotion.avg_valence) sumValence += emotion.avg_valence;
-          if (emotion.avg_dominance) sumDominance += emotion.avg_dominance;
-          totalSegments += emotion.total_segments || 0;
-
-          // 各セグメントの感情をカウント
-          if (emotion.segments && Array.isArray(emotion.segments)) {
-            for (const segment of emotion.segments) {
-              const emo = segment.emotion;
-              // undefinedやnullの感情はスキップ
-              if (emo && emo !== 'undefined' && emo !== 'null') {
-                emotionCounts[emo] = (emotionCounts[emo] || 0) + 1;
-              }
-            }
+      if (!segmentError && segments && segments.length > 0) {
+        // 感情ラベルをカウント
+        for (const segment of segments) {
+          const label = segment.emotion_label;
+          if (label && label !== 'undefined' && label !== 'null') {
+            emotionCounts[label] = (emotionCounts[label] || 0) + 1;
+            allEmotionLabels.push(label);
           }
         }
       }
     }
 
-    const avgArousal = emotionResults.length > 0 ? sumArousal / emotionResults.length : null;
-    const avgValence = emotionResults.length > 0 ? sumValence / emotionResults.length : null;
-    const avgDominance = emotionResults.length > 0 ? sumDominance / emotionResults.length : null;
-
-    // 主要な感情を決定
-    let dominantEmotion = 'neutral';
+    // 主要な感情を決定（最も多く出現した感情）
+    let dominantEmotion = '中立';
     if (Object.keys(emotionCounts).length > 0) {
       dominantEmotion = Object.entries(emotionCounts).reduce((a, b) =>
         b[1] > a[1] ? b : a
       )[0];
     }
 
-    console.log('Emotion summary:', {
-      avgArousal,
-      avgValence,
-      avgDominance,
-      dominantEmotion,
-      emotionCounts
-    });
+    // 感情の変化パターンを検出（重複を除いた順序）
+    const emotionFlow: string[] = [];
+    let prevEmotion = '';
+    for (const emotion of allEmotionLabels) {
+      if (emotion !== prevEmotion) {
+        emotionFlow.push(emotion);
+        prevEmotion = emotion;
+      }
+    }
 
-    // 3. AIで日記要約とインサイトを生成
-    console.log('Generating AI summary...');
+    console.log('Emotion summary:', {
+      dominantEmotion,
+      emotionCounts,
+      emotionFlow
+    });
 
     const summaryPrompt = `以下の会話内容から、要点をピックアップして簡潔な日記を書いてください。
 
@@ -173,41 +161,37 @@ ${conversationForDiary || transcriptionText}
 - 日付表現は不要
 - 箇条書き禁止`;
 
-    const insightPrompt = `以下の音声分析結果と会話内容から、感情状態を伝えてください。
+    // 感情の変化パターンを文字列化
+    const emotionFlowText = emotionFlow.length > 0
+      ? emotionFlow.join(' → ')
+      : '感情データなし';
 
-【音声分析結果（最重要）】
-エネルギーレベル: ${avgArousal?.toFixed(2) || 'N/A'} / 5.0（低い=疲れ・落ち着き、高い=興奮・緊張）
-気分: ${avgValence?.toFixed(2) || 'N/A'} / 5.0（低い=ネガティブ、高い=ポジティブ）
+    const insightPrompt = `以下の音声分析結果と会話内容から、今日の心の状態を伝えてください。
 
-【会話内容（参考）】
+【音声分析結果】
+全体的な感情: ${dominantEmotion}（最も多く検出された感情）
+${emotionFlow.length > 1 ? `感情の変化: ${emotionFlowText}` : ''}
+
+【会話内容】
 ${fullConversation || transcriptionText}
 
 【要件】
-- 音声の特徴から読み取れる感情状態を中心に記述
-- 「声のトーンから」「声には〜が表れています」など、音声分析を明示
-- 専門用語は使わない（覚醒度→エネルギー/元気、快度→気分/気持ち）
-- 言葉と声のギャップがあれば優しく指摘
-- 2文、80-120文字程度
+- 会話の内容と感情の変化を踏まえて、今日の心の状態を伝える
+- 具体的な場面を引用しながら「〜という話をされていましたが、その時の声には〜が表れていました」のように記述
+- 2-3文、100-150文字程度
 - 共感的で優しい口調
-
-【音声分析の解釈基準】
-- エネルギー低 × 気分低 = 疲労・落ち込み → 「疲れている」「元気がない」「気持ちが沈んでいる」
-- エネルギー高 × 気分低 = ストレス・緊張 → 「緊張している」「ストレスを感じている」「張りつめている」
-- エネルギー高 × 気分高 = 喜び・興奮 → 「元気」「明るい」「前向き」
-- エネルギー低 × 気分高 = 穏やか・リラックス → 「落ち着いている」「穏やか」「リラックス」`;
+- 専門用語は使わない`;
 
     const [summaryResponse, insightResponse] = await Promise.all([
       openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5-mini',
         messages: [{ role: 'user', content: summaryPrompt }],
-        temperature: 0.7,
-        max_tokens: 400,
+        max_completion_tokens: 1000,
       }),
       openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5-mini',
         messages: [{ role: 'user', content: insightPrompt }],
-        temperature: 0.7,
-        max_tokens: 300,
+        max_completion_tokens: 1000,
       })
     ]);
 
@@ -219,11 +203,11 @@ ${fullConversation || transcriptionText}
     // 4. daily_summariesを更新または作成
     const summaryData = {
       formatted_text: diarySummary,
-      avg_arousal: avgArousal,
-      avg_valence: avgValence,
-      avg_dominance: avgDominance,
-      dominant_emotion: null,
-      emotion_distribution: null,
+      avg_arousal: null,
+      avg_valence: null,
+      avg_dominance: null,
+      dominant_emotion: dominantEmotion,
+      emotion_distribution: emotionCounts,
       total_recordings: recordingIds.length,
       ai_insights: aiInsights,
       updated_at: new Date().toISOString(),
@@ -265,10 +249,8 @@ ${fullConversation || transcriptionText}
         diarySummary,
         aiInsights,
         emotionSummary: {
-          avgArousal,
-          avgValence,
-          avgDominance,
           dominantEmotion,
+          emotionFlow,
           emotionDistribution: emotionCounts,
           totalRecordings: recordingIds.length,
         }

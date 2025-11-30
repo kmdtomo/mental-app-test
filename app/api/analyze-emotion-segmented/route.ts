@@ -198,11 +198,20 @@ finally:
       }
     };
 
-    // 並列処理で全セグメントを分析
-    console.log(`Starting parallel analysis of ${segments.length} segments...`);
+    // 並列処理で全セグメントを分析（同時最大5セグメントまで）
+    console.log(`Starting parallel analysis of ${segments.length} segments (max 5 concurrent)...`);
     const startTime = Date.now();
 
-    const results = await Promise.all(segments.map(segment => analyzeSegment(segment)));
+    const CONCURRENT_LIMIT = 5;
+    const results: any[] = [];
+
+    for (let i = 0; i < segments.length; i += CONCURRENT_LIMIT) {
+      const chunk = segments.slice(i, i + CONCURRENT_LIMIT);
+      console.log(`Processing chunk ${Math.floor(i / CONCURRENT_LIMIT) + 1}: segments ${i + 1}-${Math.min(i + CONCURRENT_LIMIT, segments.length)}`);
+      const chunkResults = await Promise.all(chunk.map(segment => analyzeSegment(segment)));
+      results.push(...chunkResults);
+    }
+
     const analyzedSegments = results.filter(result => result !== null);
 
     const endTime = Date.now();

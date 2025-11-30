@@ -1,16 +1,16 @@
 'use client';
 
-import { House, Calendar, MessageCircle, BarChart3, User } from 'lucide-react';
+import { Home, Calendar, MessageCircle, BarChart3, User, LucideIcon } from 'lucide-react';
 
 type NavigationItem = {
   id: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: LucideIcon;
   label: string;
   active?: boolean;
 };
 
 const navigationItems: NavigationItem[] = [
-  { id: 'home', icon: House, label: 'ホーム' },
+  { id: 'home', icon: Home, label: 'ホーム' },
   { id: 'calendar', icon: Calendar, label: 'カレンダー' },
   { id: 'chat', icon: MessageCircle, label: 'チャット', active: true },
   { id: 'analytics', icon: BarChart3, label: '分析' },

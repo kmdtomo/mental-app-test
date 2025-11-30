@@ -1,11 +1,11 @@
 'use client';
 
-import { Heart, LayoutDashboard, MessageCircle, Settings } from 'lucide-react';
+import { Heart, LayoutDashboard, MessageCircle, Settings, LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 
 type NavigationItem = {
   id: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: LucideIcon;
   label: string;
   href: string;
   active?: boolean;

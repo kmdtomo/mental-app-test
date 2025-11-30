@@ -63,62 +63,62 @@ export default function Page() {
     {
       id: 'segment-1',
       user_id: 'mock-user-id',
-      date: '2025-01-15',
-      session_id: 'session-1',
+      recording_id: 'recording-1',
       segment_index: 0,
       text: '今日は本当に充実した一日でした。',
       arousal: 0.68,
       valence: 0.82,
       dominance: 0.75,
-      emotion: 'joy',
+      emotion_label: 'joy',
       start_time: 0.0,
       end_time: 3.2,
-      created_at: '2025-01-15T09:02:30Z'
+      created_at: '2025-01-15T09:02:30Z',
+      updated_at: '2025-01-15T09:02:30Z'
     },
     {
       id: 'segment-2',
       user_id: 'mock-user-id',
-      date: '2025-01-15',
-      session_id: 'session-1',
+      recording_id: 'recording-1',
       segment_index: 1,
       text: '朝から気分が良く、新しいプロジェクトの企画会議では自分のアイデアが採用されて嬉しかったです。',
       arousal: 0.72,
       valence: 0.85,
       dominance: 0.78,
-      emotion: 'excitement',
+      emotion_label: 'excitement',
       start_time: 3.2,
       end_time: 8.5,
-      created_at: '2025-01-15T09:02:45Z'
+      created_at: '2025-01-15T09:02:45Z',
+      updated_at: '2025-01-15T09:02:45Z'
     },
     {
       id: 'segment-3',
       user_id: 'mock-user-id',
-      date: '2025-01-15',
-      session_id: 'session-2',
+      recording_id: 'recording-2',
       segment_index: 0,
       text: '午後は久しぶりに友人とカフェで話しました。',
       arousal: 0.55,
       valence: 0.70,
       dominance: 0.68,
-      emotion: 'calm',
+      emotion_label: 'calm',
       start_time: 0.0,
       end_time: 4.1,
-      created_at: '2025-01-15T14:30:00Z'
+      created_at: '2025-01-15T14:30:00Z',
+      updated_at: '2025-01-15T14:30:00Z'
     },
     {
       id: 'segment-4',
       user_id: 'mock-user-id',
-      date: '2025-01-15',
-      session_id: 'session-2',
+      recording_id: 'recording-2',
       segment_index: 1,
       text: '最近の出来事や将来の夢について語り合い、改めて自分の目標が明確になった気がします。',
       arousal: 0.62,
       valence: 0.76,
       dominance: 0.70,
-      emotion: 'satisfaction',
+      emotion_label: 'satisfaction',
       start_time: 4.1,
       end_time: 9.8,
-      created_at: '2025-01-15T14:30:30Z'
+      created_at: '2025-01-15T14:30:30Z',
+      updated_at: '2025-01-15T14:30:30Z'
     }
   ];
 

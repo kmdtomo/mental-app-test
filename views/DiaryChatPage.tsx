@@ -10,6 +10,18 @@ import { MessageCircle, ArrowLeft, FileText } from 'lucide-react';
 import Link from 'next/link';
 import { getTodayDialogue } from '@/features/diary-chat/actions/chatActions';
 
+// セグメントの型（Supabaseから取得）
+interface TranscriptionSegmentData {
+  id: string;
+  text: string;
+  start_time: number;
+  end_time: number;
+  emotion_label: string | null;
+  arousal: number | null;
+  valence: number | null;
+  dominance: number | null;
+}
+
 interface DiaryChatPageProps {
   user?: {
     id: string;
@@ -93,7 +105,7 @@ export function DiaryChatPage({ user, recordingLimit }: DiaryChatPageProps) {
         .from('transcription_segments')
         .select('id, text, start_time, end_time, emotion_label, arousal, valence, dominance')
         .eq('recording_id', uploadResult.recordingId)
-        .order('segment_index', { ascending: true });
+        .order('segment_index', { ascending: true }) as { data: TranscriptionSegmentData[] | null };
 
       // 5. 平均VAD値を計算
       let avgArousal = 0;
