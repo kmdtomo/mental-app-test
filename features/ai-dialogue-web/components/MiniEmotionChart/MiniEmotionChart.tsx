@@ -9,6 +9,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+import { EMOTION_COLORS, NEUTRAL_GRADIENT_COLOR } from '@/lib/emotionLabeling';
 
 interface EmotionPoint {
   id: string;
@@ -36,12 +37,14 @@ export function MiniEmotionChart({ data }: MiniEmotionChartProps) {
     }));
   }, [data]);
 
-  const POSITIVE_COLOR = '#10B981';
-  const NEGATIVE_COLOR = '#F43F5E';
+  // 統一色定義を使用
+  const POSITIVE_COLOR = EMOTION_COLORS['喜び・楽しい'];
+  const NEUTRAL_COLOR = NEUTRAL_GRADIENT_COLOR;  // グラデーション用
+  const NEGATIVE_COLOR = EMOTION_COLORS['怒り・イライラ'];
 
   const getEmotionColor = (valence: number): string => {
     if (valence >= 0.6) return POSITIVE_COLOR;
-    if (valence >= 0.4) return '#C17B68';
+    if (valence >= 0.4) return NEUTRAL_COLOR;
     return NEGATIVE_COLOR;
   };
 
@@ -90,12 +93,12 @@ export function MiniEmotionChart({ data }: MiniEmotionChartProps) {
             <defs>
               <linearGradient id="miniGradient" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor={POSITIVE_COLOR} stopOpacity={0.3} />
-                <stop offset="50%" stopColor="#C17B68" stopOpacity={0.2} />
+                <stop offset="50%" stopColor={NEUTRAL_COLOR} stopOpacity={0.2} />
                 <stop offset="100%" stopColor={NEGATIVE_COLOR} stopOpacity={0.3} />
               </linearGradient>
               <linearGradient id="miniLineGradient" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="10%" stopColor={POSITIVE_COLOR} />
-                <stop offset="50%" stopColor="#C17B68" />
+                <stop offset="50%" stopColor={NEUTRAL_COLOR} />
                 <stop offset="90%" stopColor={NEGATIVE_COLOR} />
               </linearGradient>
             </defs>

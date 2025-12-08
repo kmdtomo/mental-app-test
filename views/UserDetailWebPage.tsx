@@ -50,7 +50,7 @@ export function UserDetailWebPage({ user }: UserDetailWebPageProps) {
   };
 
   return (
-    <div className="flex w-[1440px] h-screen" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif' }}>
+    <div className="flex w-full h-screen" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif' }}>
       {/* Sidebar */}
       <WebSidebar activeItem="settings" user={user} />
 

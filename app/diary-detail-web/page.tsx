@@ -73,25 +73,30 @@ export default async function Page({ searchParams }: PageProps) {
     transcriptionSegments = segments || [];
   }
 
-  // 前後の日付のサマリーを確認（ナビゲーション用）
-  const currentDate = new Date(date);
-  const prevDate = new Date(currentDate);
-  prevDate.setDate(prevDate.getDate() - 1);
-  const nextDate = new Date(currentDate);
-  nextDate.setDate(nextDate.getDate() + 1);
-
-  const { data: adjacentSummaries } = await supabase
+  // 前後の日記がある日付を取得（ナビゲーション用）
+  // 現在日付より前で最も新しい日付
+  const { data: prevSummary } = await supabase
     .from('daily_summaries')
     .select('date')
     .eq('user_id', user.id)
-    .in('date', [
-      prevDate.toISOString().split('T')[0],
-      nextDate.toISOString().split('T')[0]
-    ]);
+    .lt('date', date)
+    .order('date', { ascending: false })
+    .limit(1)
+    .single();
+
+  // 現在日付より後で最も古い日付
+  const { data: nextSummary } = await supabase
+    .from('daily_summaries')
+    .select('date')
+    .eq('user_id', user.id)
+    .gt('date', date)
+    .order('date', { ascending: true })
+    .limit(1)
+    .single();
 
   const adjacentDates = {
-    prev: adjacentSummaries?.find(s => s.date === prevDate.toISOString().split('T')[0]) ? prevDate.toISOString().split('T')[0] : null,
-    next: adjacentSummaries?.find(s => s.date === nextDate.toISOString().split('T')[0]) ? nextDate.toISOString().split('T')[0] : null,
+    prev: prevSummary?.date || null,
+    next: nextSummary?.date || null,
   };
 
   return (

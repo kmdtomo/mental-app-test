@@ -184,12 +184,12 @@ ${fullConversation || transcriptionText}
 
     const [summaryResponse, insightResponse] = await Promise.all([
       openai.chat.completions.create({
-        model: 'gpt-5-mini',
+        model: 'gpt-4.1-mini',
         messages: [{ role: 'user', content: summaryPrompt }],
         max_completion_tokens: 1000,
       }),
       openai.chat.completions.create({
-        model: 'gpt-5-mini',
+        model: 'gpt-4.1-mini',
         messages: [{ role: 'user', content: insightPrompt }],
         max_completion_tokens: 1000,
       })

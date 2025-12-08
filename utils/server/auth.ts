@@ -20,7 +20,7 @@ export const handleAuthValidation = async () => {
   }
 };
 
-// ログインしていた場合、/voice-diary にリダイレクトする
+// ログインしていた場合、/dashboard-web にリダイレクトする
 // ミドルウェアで既にセッションチェックをしているため、getSessionを使用
 export const handleAuthRedirect = async () => {
   const cookieStore = cookies();
@@ -30,7 +30,7 @@ export const handleAuthRedirect = async () => {
     // getUser()ではなくgetSession()を使用してAPI呼び出しを削減
     const { data, error } = await supabase.auth.getSession();
     if (!error && data.session) {
-      redirect("/voice-diary");
+      redirect("/dashboard-web");
     }
   } catch (e) {
     console.error(e);

@@ -3,8 +3,10 @@
 import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { WebSidebar } from '@/components/navigation/WebSidebar';
-import { ChevronLeft, ChevronRight, Activity, BookOpen, Sparkles, MessageCircle } from 'lucide-react';
-import { EmotionChart, SummaryRadar } from '@/features/diary-detail-web/components';
+import { ChevronLeft, ChevronRight, BookOpen, Sparkles, MessageCircle } from 'lucide-react';
+// EmotionChartは感情の推移セクションと共にコメントアウト中
+// import { EmotionChart, SummaryRadar } from '@/features/diary-detail-web/components';
+import { SummaryRadar } from '@/features/diary-detail-web/components';
 import { DailySummary } from '@/lib/db/dailySummary';
 
 interface EmotionPoint {
@@ -149,7 +151,7 @@ export function DiaryDetailWebPage({
   const hasData = dialogueTurns.length > 0 || summary !== null;
 
   return (
-    <div className="flex w-[1440px] h-screen" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif' }}>
+    <div className="flex w-full h-screen" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif' }}>
       {/* Sidebar */}
       <WebSidebar activeItem="dashboard" user={user} />
 
@@ -199,7 +201,7 @@ export function DiaryDetailWebPage({
           ) : (
             /* Grid Layout */
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {/* Main Chart Section - Spans 2 columns */}
+              {/* 感情の推移 (Emotional Flow) - コメントアウト
               <div className="md:col-span-2 bg-white rounded-[32px] shadow-[0_4px_20px_rgba(193,123,104,0.08)] p-6 min-h-[400px] flex flex-col relative overflow-visible border border-[#F5EBE0]">
                 <div className="flex items-center justify-between mb-4 px-2">
                   <h3 className="text-[#C17B68] font-bold uppercase tracking-wider text-sm flex items-center gap-2">
@@ -219,8 +221,39 @@ export function DiaryDetailWebPage({
                   )}
                 </div>
               </div>
+              */}
 
-              {/* Assessment Radar Section - Spans 1 column */}
+              {/* Main Content Section - 日記の要約とAIメッセージ - 左2カラム */}
+              <div className="md:col-span-2 flex flex-col gap-6">
+                {/* Diary Summary */}
+                <div className="bg-[#FAF5F0] rounded-[32px] p-8 border border-[#C17B68]/10 shadow-[0_4px_15px_rgba(193,123,104,0.05)]">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-full bg-[#C17B68]/10 flex items-center justify-center text-[#C17B68]">
+                      <BookOpen className="w-5 h-5" />
+                    </div>
+                    <h3 className="text-lg font-bold text-[#3D3632]">日記の要約</h3>
+                  </div>
+                  <p className="text-[#6B5F58] leading-relaxed whitespace-pre-wrap">
+                    {summary?.formatted_text || summary?.transcription_text || 'この日の要約はまだ生成されていません。'}
+                  </p>
+                </div>
+
+                {/* AI Advice */}
+                <div className="bg-gradient-to-br from-[#C17B68] to-[#A66250] rounded-[32px] p-8 text-white shadow-[0_8px_25px_rgba(193,123,104,0.25)] relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-10 -mt-10 blur-2xl"></div>
+                  <div className="flex items-center gap-3 mb-4 relative z-10">
+                    <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white">
+                      <Sparkles className="w-5 h-5" />
+                    </div>
+                    <h3 className="text-lg font-bold">AIからのメッセージ</h3>
+                  </div>
+                  <p className="text-white/90 leading-relaxed relative z-10 font-medium text-lg">
+                    {summary?.ai_insights || 'AIからのメッセージはまだ生成されていません。'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Assessment Radar Section - 右1カラム */}
               <div className="md:col-span-1 flex flex-col gap-6">
                 {/* Radar Card */}
                 <div className="bg-white rounded-[32px] shadow-[0_4px_20px_rgba(193,123,104,0.08)] p-6 flex-1 min-h-[300px] flex flex-col border border-[#F5EBE0]">
@@ -246,36 +279,6 @@ export function DiaryDetailWebPage({
                   </div>
                   <p className="text-white/70 text-sm leading-snug mt-1">
                     {summary?.total_recordings || dialogueTurns.filter(t => t.role === 'user').length} 回の対話から分析
-                  </p>
-                </div>
-              </div>
-
-              {/* Diary Summary & AI Advice */}
-              <div className="md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-8">
-                {/* Diary Summary */}
-                <div className="bg-[#FAF5F0] rounded-[32px] p-8 border border-[#C17B68]/10 shadow-[0_4px_15px_rgba(193,123,104,0.05)]">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-full bg-[#C17B68]/10 flex items-center justify-center text-[#C17B68]">
-                      <BookOpen className="w-5 h-5" />
-                    </div>
-                    <h3 className="text-lg font-bold text-[#3D3632]">日記の要約</h3>
-                  </div>
-                  <p className="text-[#6B5F58] leading-relaxed whitespace-pre-wrap">
-                    {summary?.formatted_text || summary?.transcription_text || 'この日の要約はまだ生成されていません。'}
-                  </p>
-                </div>
-
-                {/* AI Advice */}
-                <div className="bg-gradient-to-br from-[#C17B68] to-[#A66250] rounded-[32px] p-8 text-white shadow-[0_8px_25px_rgba(193,123,104,0.25)] relative overflow-hidden">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-10 -mt-10 blur-2xl"></div>
-                  <div className="flex items-center gap-3 mb-4 relative z-10">
-                    <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white">
-                      <Sparkles className="w-5 h-5" />
-                    </div>
-                    <h3 className="text-lg font-bold">AIからのメッセージ</h3>
-                  </div>
-                  <p className="text-white/90 leading-relaxed relative z-10 font-medium text-lg">
-                    {summary?.ai_insights || 'AIからのメッセージはまだ生成されていません。'}
                   </p>
                 </div>
               </div>

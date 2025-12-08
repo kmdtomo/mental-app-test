@@ -1,11 +1,16 @@
 import { createBrowserClient } from "@supabase/ssr";
 
-let client: ReturnType<typeof createBrowserClient> | undefined;
+// グローバル変数を使ってHMRでもクライアントを再利用する
+const globalForSupabase = typeof window !== 'undefined'
+  ? (window as unknown as { __supabaseClient?: ReturnType<typeof createBrowserClient> })
+  : {};
 
 export const createClient = () => {
-  if (client) return client;
+  if (globalForSupabase.__supabaseClient) {
+    return globalForSupabase.__supabaseClient;
+  }
 
-  client = createBrowserClient(
+  const client = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
@@ -14,11 +19,11 @@ export const createClient = () => {
         persistSession: true,
         detectSessionInUrl: true,
         flowType: 'pkce',
-        // リフレッシュの頻度を制限
         storage: typeof window !== 'undefined' ? window.localStorage : undefined,
       },
     }
   );
 
+  globalForSupabase.__supabaseClient = client;
   return client;
 };

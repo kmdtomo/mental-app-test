@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
 import {
   ComposedChart,
   Line,
@@ -13,6 +13,7 @@ import {
   Label,
   ReferenceLine
 } from 'recharts';
+import { EMOTION_COLORS, EMOTION_Y_POSITION, getEmotionHexColor } from '@/lib/emotionLabeling';
 
 interface EmotionPoint {
   id: string;
@@ -23,37 +24,13 @@ interface EmotionPoint {
   dominance?: number;
   speaker: 'user' | 'model';
   text: string;
-  emotionLabel?: string; // 8種類の感情ラベル
+  emotionLabel?: string; // 9種類の感情ラベル
 }
-
-// 感情ラベルに対応する色（valenceベースのグラデーション）
-const emotionLabelColors: Record<string, string> = {
-  '喜び・楽しい': '#10B981',       // 緑（最もポジティブ）
-  '穏やか・リラックス': '#34D399', // 薄緑
-  '落ち着き': '#5EEAD4',          // ティール
-  '中立': '#C17B68',              // 茶色（中央）
-  'ストレス・緊張': '#F59E0B',    // オレンジ
-  '不安・心配': '#F97316',        // オレンジ赤
-  '悲しみ': '#FB7185',            // ピンク赤
-  '疲労・無気力': '#F43F5E',      // 赤（最もネガティブ）
-};
 
 interface EmotionChartProps {
   data: EmotionPoint[];
   compact?: boolean; // コンパクトモード（小さいUI向け）
 }
-
-// emotion_labelに基づいたY軸位置（0-1の範囲）
-const emotionLabelYPosition: Record<string, number> = {
-  '喜び・楽しい': 0.9,        // 最上部
-  '穏やか・リラックス': 0.78, // 上部
-  '落ち着き': 0.65,           // やや上
-  '中立': 0.5,                // 中央
-  'ストレス・緊張': 0.38,     // やや下
-  '不安・心配': 0.28,         // 下部
-  '悲しみ': 0.18,             // 下部
-  '疲労・無気力': 0.1,        // 最下部
-};
 
 export function EmotionChart({ data, compact = false }: EmotionChartProps) {
   // Process data - インデックスベースで均等配置（時間差に関係なく）
@@ -62,13 +39,13 @@ export function EmotionChart({ data, compact = false }: EmotionChartProps) {
     return data.map((d, index) => {
       // emotionLabelがあればその位置を使用、なければvalenceを使用
       const yPosition = d.emotionLabel
-        ? (emotionLabelYPosition[d.emotionLabel] ?? 0.5)
+        ? (EMOTION_Y_POSITION[d.emotionLabel] ?? 0.5)
         : d.valence;
       return {
         ...d,
         // インデックスベースで均等に配置（録音間の時間差を無視）
         relativeTime: index,
-        visualValence: Math.max(0.1, Math.min(0.9, yPosition))
+        visualValence: Math.max(0.05, Math.min(0.95, yPosition))
       };
     });
   }, [data]);
@@ -90,24 +67,45 @@ export function EmotionChart({ data, compact = false }: EmotionChartProps) {
     return { maxPoint: max, minPoint: min };
   }, [processedData]);
 
-  const POSITIVE_COLOR = '#10B981';
-  const NEUTRAL_COLOR = '#C17B68';
-  const NEGATIVE_COLOR = '#F43F5E';
-
-  const getEmotionColor = (valence: number): string => {
-    if (valence >= 0.6) return POSITIVE_COLOR;
-    if (valence >= 0.4) return NEUTRAL_COLOR;
-    return NEGATIVE_COLOR;
+  // グラデーション用の色（EMOTION_Y_POSITIONに対応）
+  // Y軸: 1(上) → 0(下) なので、offset: 0%(上) → 100%(下)
+  // 喜び(0.9) → 穏やか(0.78) → 落ち着き(0.65) → 中立(0.5) → ストレス(0.38) → 不安(0.28) → 悲しみ(0.18) → 疲労(0.1) → 怒り(0.05)
+  const GRADIENT_COLORS = {
+    joy: EMOTION_COLORS['喜び・楽しい'],       // #F59E0B amber (Y=0.9, offset=10%)
+    calm: EMOTION_COLORS['穏やか・リラックス'], // #10B981 emerald (Y=0.78, offset=22%)
+    neutral: '#D1D5DB',                        // gray-300 (Y=0.5, offset=50%)
+    stress: EMOTION_COLORS['ストレス・緊張'],   // #F97316 orange (Y=0.38, offset=62%)
+    sad: EMOTION_COLORS['悲しみ'],             // #3B82F6 blue (Y=0.18, offset=82%)
+    fatigue: EMOTION_COLORS['疲労・無気力'],    // #6B7280 gray (Y=0.1, offset=90%)
+    anger: EMOTION_COLORS['怒り・イライラ'],    // #EF4444 red (Y=0.05, offset=95%)
   };
+
+  // チャートの高さを取得してグラデーションを絶対座標で適用するためのロジック
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [chartHeight, setChartHeight] = useState(0);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setChartHeight(entry.contentRect.height);
+      }
+    });
+
+    observer.observe(containerRef.current);
+
+    return () => observer.disconnect();
+  }, []);
 
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
       const point = payload[0].payload;
       if (!point.text) return null;
 
-      // emotionLabelがある場合はその色を使用、なければvalenceから計算
+      // emotionLabelがある場合はその色を使用
       const emotionLabel = point.emotionLabel || '中立';
-      const color = emotionLabelColors[emotionLabel] || getEmotionColor(point.valence);
+      const color = getEmotionHexColor(emotionLabel);
 
       return (
         <div className="bg-[#FAF5F0]/95 backdrop-blur-md p-4 shadow-xl shadow-[#C17B68]/10 rounded-2xl border border-[#C17B68]/20 max-w-[280px]">
@@ -135,10 +133,8 @@ export function EmotionChart({ data, compact = false }: EmotionChartProps) {
 
   const CustomDot = (props: any) => {
     const { cx, cy, payload } = props;
-    // emotionLabelがあればその色を使用、なければvalenceから計算
-    const color = payload.emotionLabel
-      ? (emotionLabelColors[payload.emotionLabel] || getEmotionColor(payload.valence))
-      : getEmotionColor(payload.valence);
+    // emotionLabelがあればその色を使用
+    const color = getEmotionHexColor(payload.emotionLabel || '中立');
     const isSignificant = payload.speaker === 'user' || payload === maxPoint || payload === minPoint;
 
     if (!isSignificant) return null;
@@ -158,14 +154,23 @@ export function EmotionChart({ data, compact = false }: EmotionChartProps) {
 
   // コンパクトモードの場合
   if (compact) {
+    const margin = { top: 5, right: 15, left: 10, bottom: 5 };
+    // userSpaceOnUse用の座標計算
+    // Y軸は上(0)から下(height)へ。
+    // 値1.0 (Top) -> margin.top
+    // 値0.0 (Bottom) -> chartHeight - margin.bottom
+    const y1 = margin.top;
+    const y2 = chartHeight - margin.bottom;
+
     return (
-      <div className="w-full h-full relative overflow-visible font-sans">
-        {/* 縦軸ラベル - コンパクト版（4項目維持） */}
+      <div ref={containerRef} className="w-full h-full relative overflow-visible font-sans">
+        {/* 縦軸ラベル - コンパクト版（主要感情のみ） */}
         <div className="absolute left-0 top-0 bottom-0 w-16 flex flex-col justify-between py-1 pointer-events-none z-10">
-          <span className="text-[9px] font-bold text-emerald-500/80 leading-none">喜び・楽しい</span>
-          <span className="text-[9px] font-bold text-green-500/80 leading-none">穏やか</span>
+          <span className="text-[9px] font-bold text-amber-500/80 leading-none">喜び</span>
+          <span className="text-[9px] font-bold text-emerald-500/80 leading-none">穏やか</span>
+          <span className="text-[9px] font-bold text-gray-400/80 leading-none">中立</span>
           <span className="text-[9px] font-bold text-orange-500/80 leading-none">ストレス</span>
-          <span className="text-[9px] font-bold text-rose-500/80 leading-none">悲しみ</span>
+          <span className="text-[9px] font-bold text-blue-500/80 leading-none">悲しみ</span>
         </div>
 
         <div className="ml-16 h-full">
@@ -175,13 +180,21 @@ export function EmotionChart({ data, compact = false }: EmotionChartProps) {
               margin={{ top: 5, right: 15, left: 10, bottom: 5 }}
             >
               <defs>
-                <linearGradient id="lineGradientCompact" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="10%" stopColor={POSITIVE_COLOR} />
-                  <stop offset="50%" stopColor={NEUTRAL_COLOR} />
-                  <stop offset="90%" stopColor={NEGATIVE_COLOR} />
+                {/* Y軸に沿ったグラデーション（絶対座標指定） */}
+                {/* gradientUnits="userSpaceOnUse" を使用してデータ範囲に依存しない色指定を行う */}
+                <linearGradient id="lineGradientCompact" gradientUnits="userSpaceOnUse" x1="0" y1={y1} x2="0" y2={y2}>
+                  <stop offset="10%" stopColor={GRADIENT_COLORS.joy} />
+                  <stop offset="22%" stopColor={GRADIENT_COLORS.calm} />
+                  <stop offset="50%" stopColor={GRADIENT_COLORS.neutral} />
+                  <stop offset="62%" stopColor={GRADIENT_COLORS.stress} />
+                  {/* 悲しみ(Blue)の範囲を広げて、0.18付近で確実に青くなるようにする */}
+                  <stop offset="78%" stopColor={GRADIENT_COLORS.sad} />
+                  <stop offset="86%" stopColor={GRADIENT_COLORS.sad} />
+                  <stop offset="92%" stopColor={GRADIENT_COLORS.fatigue} />
+                  <stop offset="96%" stopColor={GRADIENT_COLORS.anger} />
                 </linearGradient>
                 <filter id="shadowCompact" height="200%">
-                  <feDropShadow dx="0" dy="2" stdDeviation="2" floodColor="#C17B68" floodOpacity="0.15"/>
+                  <feDropShadow dx="0" dy="2" stdDeviation="2" floodColor="#C17B68" floodOpacity="0.15" />
                 </filter>
               </defs>
 
@@ -220,15 +233,18 @@ export function EmotionChart({ data, compact = false }: EmotionChartProps) {
   }
 
   // 通常モード（大きいUI向け）
+  // 最高点・最低点の色を取得
+  const maxPointColor = maxPoint ? getEmotionHexColor(maxPoint.emotionLabel || '喜び・楽しい') : GRADIENT_COLORS.joy;
+  const minPointColor = minPoint ? getEmotionHexColor(minPoint.emotionLabel || '悲しみ') : GRADIENT_COLORS.sad;
+
+  const margin = { top: 20, right: 20, left: 30, bottom: 20 };
+  const y1 = margin.top;
+  const y2 = chartHeight - margin.bottom;
+
   return (
-    <div className="w-full h-full pt-12 pr-6 pl-2 pb-2 relative overflow-visible font-sans">
-      {/* 縦軸ラベル - グラフ領域に合わせて配置 */}
-      <div className="absolute left-0 top-12 bottom-2 w-20 flex flex-col justify-between pointer-events-none z-10">
-        <span className="text-[10px] font-bold text-emerald-500/80 tracking-widest leading-none">喜び・楽しい</span>
-        <span className="text-[10px] font-bold text-green-500/80 tracking-widest leading-none">穏やか</span>
-        <span className="text-[10px] font-bold text-orange-500/80 tracking-widest leading-none">ストレス</span>
-        <span className="text-[10px] font-bold text-rose-500/80 tracking-widest leading-none">悲しみ</span>
-      </div>
+    <div ref={containerRef} className="w-full h-full pt-12 pr-6 pl-2 pb-2 relative overflow-visible font-sans">
+      {/* 縦軸ラベル - グラフ領域に合わせて配置（主要感情） */}
+      {/* 縦軸ラベル - YAxisで制御するため削除 */}
 
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart
@@ -236,13 +252,20 @@ export function EmotionChart({ data, compact = false }: EmotionChartProps) {
           margin={{ top: 20, right: 20, left: 30, bottom: 20 }}
         >
           <defs>
-            <linearGradient id="lineGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="10%" stopColor={POSITIVE_COLOR} />
-              <stop offset="50%" stopColor={NEUTRAL_COLOR} />
-              <stop offset="90%" stopColor={NEGATIVE_COLOR} />
+            {/* Y軸に沿ったグラデーション（絶対座標指定） */}
+            <linearGradient id="lineGradient" gradientUnits="userSpaceOnUse" x1="0" y1={y1} x2="0" y2={y2}>
+              <stop offset="10%" stopColor={GRADIENT_COLORS.joy} />
+              <stop offset="22%" stopColor={GRADIENT_COLORS.calm} />
+              <stop offset="50%" stopColor={GRADIENT_COLORS.neutral} />
+              <stop offset="62%" stopColor={GRADIENT_COLORS.stress} />
+              {/* 悲しみ(Blue)の範囲を広げて、0.18付近で確実に青くなるようにする */}
+              <stop offset="78%" stopColor={GRADIENT_COLORS.sad} />
+              <stop offset="86%" stopColor={GRADIENT_COLORS.sad} />
+              <stop offset="92%" stopColor={GRADIENT_COLORS.fatigue} />
+              <stop offset="96%" stopColor={GRADIENT_COLORS.anger} />
             </linearGradient>
             <filter id="shadow" height="200%">
-              <feDropShadow dx="0" dy="4" stdDeviation="4" floodColor="#C17B68" floodOpacity="0.15"/>
+              <feDropShadow dx="0" dy="4" stdDeviation="4" floodColor="#C17B68" floodOpacity="0.15" />
             </filter>
           </defs>
 
@@ -254,7 +277,30 @@ export function EmotionChart({ data, compact = false }: EmotionChartProps) {
             hide={true}
             domain={['dataMin', 'dataMax']}
           />
-          <YAxis domain={[0, 1]} hide={true} />
+          <YAxis
+            domain={[0, 1]}
+            ticks={[0.9, 0.78, 0.5, 0.38, 0.18]}
+            axisLine={false}
+            tickLine={false}
+            width={40}
+            tick={({ x, y, payload }) => {
+              const config = {
+                0.9: { label: '喜び', color: '#F59E0B' },
+                0.78: { label: '穏やか', color: '#10B981' },
+                0.5: { label: '中立', color: '#9CA3AF' },
+                0.38: { label: 'ストレス', color: '#F97316' },
+                0.18: { label: '悲しみ', color: '#3B82F6' },
+              }[payload.value as number];
+
+              if (!config) return null;
+
+              return (
+                <text x={x} y={y} dy={3} textAnchor="end" fontSize={10} fontWeight="bold" fill={config.color} opacity={0.8}>
+                  {config.label}
+                </text>
+              );
+            }}
+          />
 
           <Tooltip
             content={<CustomTooltip />}
@@ -282,10 +328,10 @@ export function EmotionChart({ data, compact = false }: EmotionChartProps) {
           {maxPoint && (
             <ReferenceDot x={maxPoint.relativeTime} y={maxPoint.visualValence} r={0}>
               <Label
-                content={({viewBox}: any) => (
+                content={({ viewBox }: any) => (
                   <g transform={`translate(${viewBox.x}, ${viewBox.y - 20})`}>
-                    <rect x="-30" y="-14" width="60" height="24" rx="12" fill="white" className="shadow-sm shadow-[#C17B68]/20"/>
-                    <text x="0" y="2" textAnchor="middle" fontSize="10" fontWeight="bold" fill={POSITIVE_COLOR}>最高潮</text>
+                    <rect x="-30" y="-14" width="60" height="24" rx="12" fill="white" className="shadow-sm shadow-[#C17B68]/20" />
+                    <text x="0" y="2" textAnchor="middle" fontSize="10" fontWeight="bold" fill={maxPointColor}>最高潮</text>
                   </g>
                 )}
               />
@@ -295,10 +341,10 @@ export function EmotionChart({ data, compact = false }: EmotionChartProps) {
           {minPoint && (
             <ReferenceDot x={minPoint.relativeTime} y={minPoint.visualValence} r={0}>
               <Label
-                content={({viewBox}: any) => (
+                content={({ viewBox }: any) => (
                   <g transform={`translate(${viewBox.x}, ${viewBox.y + 25})`}>
-                    <rect x="-30" y="-10" width="60" height="24" rx="12" fill="white" className="shadow-sm shadow-[#C17B68]/20"/>
-                    <text x="0" y="6" textAnchor="middle" fontSize="10" fontWeight="bold" fill={NEGATIVE_COLOR}>最低</text>
+                    <rect x="-30" y="-10" width="60" height="24" rx="12" fill="white" className="shadow-sm shadow-[#C17B68]/20" />
+                    <text x="0" y="6" textAnchor="middle" fontSize="10" fontWeight="bold" fill={minPointColor}>最低</text>
                   </g>
                 )}
               />

@@ -8,19 +8,7 @@ import { EmotionChart } from '@/features/diary-detail-web/components';
 import { getTodayDialogue } from '@/features/diary-chat/actions/chatActions';
 import { useVoiceRecorder } from '@/features/voice-diary/hooks/useVoiceRecorder';
 import { useAudioVisualizer } from '@/features/voice-diary/hooks/useAudioVisualizer';
-
-// 感情の色を定義（valenceベースのグラデーション、EmotionChartと統一）
-// 高valence（ポジティブ）= 緑系、低valence（ネガティブ）= 赤/オレンジ系
-const emotionColors: Record<string, string> = {
-  '喜び・楽しい': '#10B981',       // 緑（最もポジティブ）
-  '穏やか・リラックス': '#34D399', // 薄緑
-  '落ち着き': '#5EEAD4',          // ティール
-  '中立': '#C17B68',              // 茶色（中央）
-  'ストレス・緊張': '#F59E0B',    // オレンジ
-  '不安・心配': '#F97316',        // オレンジ赤
-  '悲しみ': '#FB7185',            // ピンク赤
-  '疲労・無気力': '#F43F5E',      // 赤（最もネガティブ）
-};
+import { getEmotionHexColorForUI } from '@/lib/emotionLabeling';
 
 // セグメントの型
 interface Segment {
@@ -75,6 +63,8 @@ interface AIDialogueWebPageProps {
     remaining: number;
     total: number;
   };
+  initialDate?: string;
+  initialMessages?: Message[];
 }
 
 // 感情に応じた色付きテキストを表示するコンポーネント
@@ -82,11 +72,14 @@ function ColoredTranscript({ segments }: { segments: Segment[] }) {
   return (
     <p className="text-lg text-[#3D3632]">
       {segments.map((segment, index) => {
-        const emotionColor = emotionColors[segment.emotion_label || '中立'] || '#9A8D85';
+        // UI用の色取得（中立はtransparent）
+        const emotionColor = getEmotionHexColorForUI(segment.emotion_label || '中立');
+        // 中立（transparent）の場合はスタイルなし
+        const isNeutral = emotionColor === 'transparent';
         return (
           <span
             key={segment.id || index}
-            style={{
+            style={isNeutral ? {} : {
               backgroundColor: `${emotionColor}20`,
               borderBottom: `2px solid ${emotionColor}`,
               paddingBottom: '2px',
@@ -148,9 +141,10 @@ function EmotionChartToggle({ segments }: { segments: Segment[] }) {
   );
 }
 
-export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit }: AIDialogueWebPageProps) {
+export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit, initialDate, initialMessages }: AIDialogueWebPageProps) {
   const router = useRouter();
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(initialMessages || []);
+  const isHistoryView = !!initialDate;
   const [isProcessingUser, setIsProcessingUser] = useState(false);  // ユーザー側の処理中（文字起こし・感情分析）
   const [userLoadingMessage, setUserLoadingMessage] = useState('');
   const [isProcessingAI, setIsProcessingAI] = useState(false);      // AI側の処理中（応答生成）
@@ -189,10 +183,12 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit 
     recordingDurationRef.current = duration;
   }
 
-  // 初回ロード時に今日の対話履歴を取得
+  // 初回ロード時に今日の対話履歴を取得（履歴表示モードでない場合のみ）
   useEffect(() => {
-    loadTodayDialogue();
-  }, []);
+    if (!isHistoryView) {
+      loadTodayDialogue();
+    }
+  }, [isHistoryView]);
 
   // メッセージが追加されたら自動スクロール
   useEffect(() => {
@@ -378,7 +374,7 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit 
   };
 
   return (
-    <div className="flex w-[1440px] h-screen" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif' }}>
+    <div className="flex w-full h-screen" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif' }}>
       {/* Sidebar */}
       <WebSidebar activeItem="dialogue" user={user} />
 
@@ -388,8 +384,18 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit 
         <div className="flex flex-col flex-1 min-w-0 py-8 pl-8 pr-4 h-full">
           {/* Page Header */}
           <div className="mb-8">
-            <h1 className="text-4xl mb-2 font-semibold text-[#3D3632]">AIとの対話</h1>
-            <p className="text-lg text-[#6B5F58]">音声でAIと対話し、あなたの気持ちを記録します</p>
+            <h1 className="text-4xl mb-2 font-semibold text-[#3D3632]">
+              {isHistoryView
+                ? `${new Date(initialDate!).toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' })}の対話`
+                : 'AIとの対話'
+              }
+            </h1>
+            <p className="text-lg text-[#6B5F58]">
+              {isHistoryView
+                ? '過去の対話履歴を確認しています'
+                : '音声でAIと対話し、あなたの気持ちを記録します'
+              }
+            </p>
           </div>
 
           <div className="flex flex-col grow shrink p-6 rounded-[20px] bg-white/85 shadow-[0_2px_8px_rgba(193,123,104,0.12),0_1px_3px_rgba(107,95,88,0.06)] min-h-0">
@@ -397,8 +403,14 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit 
             <div className="overflow-y-auto flex-1 min-h-0 pr-4">
               {messages.length === 0 && !isProcessingUser && !isProcessingAI && (
                 <div className="text-center text-[#6B5F58] py-8">
-                  <p className="text-lg">録音ボタンを押して、今日の気持ちを話してみましょう</p>
-                  <p className="text-base mt-2">AIがあなたの本音を引き出すお手伝いをします</p>
+                  {isHistoryView ? (
+                    <p className="text-lg">この日の対話履歴はありません</p>
+                  ) : (
+                    <>
+                      <p className="text-lg">録音ボタンを押して、今日の気持ちを話してみましょう</p>
+                      <p className="text-base mt-2">AIがあなたの本音を引き出すお手伝いをします</p>
+                    </>
+                  )}
                 </div>
               )}
 
