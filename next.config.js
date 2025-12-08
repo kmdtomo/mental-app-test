@@ -3,7 +3,7 @@ const { withAxiom } = require("next-axiom");
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
+  reactStrictMode: false, // 一時的に無効化してレートリミット問題をテスト
   images: {
     remotePatterns: [
       {

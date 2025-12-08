@@ -79,6 +79,105 @@ export async function saveAIMessage(
 }
 
 /**
+ * 指定日の対話履歴を感情データ付きで取得
+ */
+export async function getDialogueByDate(targetDate: string): Promise<{
+  success: boolean;
+  messages?: Array<{
+    role: 'user' | 'assistant';
+    content: string;
+    timestamp: string;
+    segments?: Array<{
+      id: string;
+      text: string;
+      start_time: number;
+      end_time: number;
+      emotion_label: string | null;
+      arousal: number | null;
+      valence: number | null;
+      dominance: number | null;
+    }>;
+    emotionData?: {
+      segments: any[];
+      total_segments: number;
+      avg_arousal: number;
+      avg_valence: number;
+      avg_dominance: number;
+    };
+  }>;
+  error?: string;
+}> {
+  const cookieStore = cookies();
+  const supabase = createClient(cookieStore);
+
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return { success: false, error: 'Unauthorized' };
+  }
+
+  // まずdialogue_turnsを取得
+  const { data: turns, error } = await supabase
+    .from('dialogue_turns')
+    .select('role, content, created_at, input_type, recording_id')
+    .eq('user_id', user.id)
+    .eq('date', targetDate)
+    .order('order_index', { ascending: true });
+
+  if (error) {
+    console.error('Error getting dialogue:', error);
+    return { success: false, error: error.message };
+  }
+
+  // 各ターンのセグメントデータを取得
+  const messages = await Promise.all(
+    turns?.map(async (turn) => {
+      let segments = undefined;
+      let emotionData = undefined;
+
+      // ユーザーの音声入力で、recording_idがある場合のみ
+      if (turn.role === 'user' && turn.recording_id) {
+        // transcription_segmentsから取得
+        const { data: transcriptionSegments, error: segmentsError } = await supabase
+          .from('transcription_segments')
+          .select('id, text, start_time, end_time, emotion_label, arousal, valence, dominance')
+          .eq('recording_id', turn.recording_id)
+          .order('segment_index', { ascending: true });
+
+        if (transcriptionSegments && !segmentsError && transcriptionSegments.length > 0) {
+          segments = transcriptionSegments;
+
+          // 平均VAD値を計算
+          const validSegments = transcriptionSegments.filter(
+            s => s.arousal !== null && s.valence !== null && s.dominance !== null
+          );
+
+          if (validSegments.length > 0) {
+            emotionData = {
+              segments: transcriptionSegments,
+              total_segments: transcriptionSegments.length,
+              avg_arousal: validSegments.reduce((sum, s) => sum + s.arousal!, 0) / validSegments.length,
+              avg_valence: validSegments.reduce((sum, s) => sum + s.valence!, 0) / validSegments.length,
+              avg_dominance: validSegments.reduce((sum, s) => sum + s.dominance!, 0) / validSegments.length,
+            };
+          }
+        }
+      }
+
+      return {
+        role: turn.role as 'user' | 'assistant',
+        content: turn.content,
+        timestamp: turn.created_at,
+        segments: segments,
+        emotionData: emotionData
+      };
+    }) || []
+  );
+
+  return { success: true, messages };
+}
+
+/**
  * その日の対話履歴を感情データ付きで取得
  */
 export async function getTodayDialogue(): Promise<{
@@ -87,6 +186,16 @@ export async function getTodayDialogue(): Promise<{
     role: 'user' | 'assistant';
     content: string;
     timestamp: string;
+    segments?: Array<{
+      id: string;
+      text: string;
+      start_time: number;
+      end_time: number;
+      emotion_label: string | null;
+      arousal: number | null;
+      valence: number | null;
+      dominance: number | null;
+    }>;
     emotionData?: {
       segments: any[];
       total_segments: number;
@@ -121,27 +230,38 @@ export async function getTodayDialogue(): Promise<{
     return { success: false, error: error.message };
   }
 
-  // 各ターンの感情データを個別に取得
+  // 各ターンのセグメントデータを取得
   const messages = await Promise.all(
     turns?.map(async (turn) => {
+      let segments = undefined;
       let emotionData = undefined;
 
       // ユーザーの音声入力で、recording_idがある場合のみ
       if (turn.role === 'user' && turn.recording_id) {
-        const { data: emotion, error: emotionError } = await supabase
-          .from('emotion_analysis_results')
-          .select('segments, total_segments, avg_arousal, avg_valence, avg_dominance')
+        // transcription_segmentsから取得
+        const { data: transcriptionSegments, error: segmentsError } = await supabase
+          .from('transcription_segments')
+          .select('id, text, start_time, end_time, emotion_label, arousal, valence, dominance')
           .eq('recording_id', turn.recording_id)
-          .maybeSingle();
+          .order('segment_index', { ascending: true });
 
-        if (emotion && !emotionError) {
-          emotionData = {
-            segments: emotion.segments,
-            total_segments: emotion.total_segments,
-            avg_arousal: emotion.avg_arousal,
-            avg_valence: emotion.avg_valence,
-            avg_dominance: emotion.avg_dominance
-          };
+        if (transcriptionSegments && !segmentsError && transcriptionSegments.length > 0) {
+          segments = transcriptionSegments;
+
+          // 平均VAD値を計算
+          const validSegments = transcriptionSegments.filter(
+            s => s.arousal !== null && s.valence !== null && s.dominance !== null
+          );
+
+          if (validSegments.length > 0) {
+            emotionData = {
+              segments: transcriptionSegments,
+              total_segments: transcriptionSegments.length,
+              avg_arousal: validSegments.reduce((sum, s) => sum + s.arousal!, 0) / validSegments.length,
+              avg_valence: validSegments.reduce((sum, s) => sum + s.valence!, 0) / validSegments.length,
+              avg_dominance: validSegments.reduce((sum, s) => sum + s.dominance!, 0) / validSegments.length,
+            };
+          }
         }
       }
 
@@ -149,6 +269,7 @@ export async function getTodayDialogue(): Promise<{
         role: turn.role as 'user' | 'assistant',
         content: turn.content,
         timestamp: turn.created_at,
+        segments: segments,
         emotionData: emotionData
       };
     }) || []

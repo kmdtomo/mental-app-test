@@ -10,6 +10,18 @@ import { MessageCircle, ArrowLeft, FileText } from 'lucide-react';
 import Link from 'next/link';
 import { getTodayDialogue } from '@/features/diary-chat/actions/chatActions';
 
+// セグメントの型（Supabaseから取得）
+interface TranscriptionSegmentData {
+  id: string;
+  text: string;
+  start_time: number;
+  end_time: number;
+  emotion_label: string | null;
+  arousal: number | null;
+  valence: number | null;
+  dominance: number | null;
+}
+
 interface DiaryChatPageProps {
   user?: {
     id: string;
@@ -55,65 +67,94 @@ export function DiaryChatPage({ user, recordingLimit }: DiaryChatPageProps) {
       const { uploadAudio } = await import('@/features/voice-diary/actions/uploadAudio');
       const uploadResult = await uploadAudio(blob);
 
-      // 2. Call Whisper API and Emotion Analysis in parallel
-      const [whisperResponse, emotionResponse] = await Promise.all([
-        fetch('/api/whisper', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            recordingId: uploadResult.recordingId,
-            filePath: uploadResult.filePath,
-            duration: duration,
-          }),
+      // 2. Call NEW Whisper Segmented API (句読点分割)
+      const whisperResponse = await fetch('/api/whisper-segmented', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          recordingId: uploadResult.recordingId,
+          filePath: uploadResult.filePath,
         }),
-        fetch('/api/analyze-emotion', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            recordingId: uploadResult.recordingId,
-            filePath: uploadResult.filePath,
-          }),
-        })
-      ]);
+      });
 
       if (!whisperResponse.ok) {
-        throw new Error('Whisper API failed');
+        throw new Error('Whisper Segmented API failed');
       }
 
       const whisperData = await whisperResponse.json();
+
+      // 3. Call NEW Emotion Analysis Segmented API (セグメント単位)
+      const emotionResponse = await fetch('/api/analyze-emotion-segmented', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          recordingId: uploadResult.recordingId,
+          filePath: uploadResult.filePath,
+        }),
+      });
+
       const emotionData = emotionResponse.ok ? await emotionResponse.json() : null;
 
-      // 3. ユーザーメッセージをUIに追加（文字起こし + 感情データ）
+      // 4. transcription_segmentsからセグメントデータを取得
+      const { createClient } = await import('@/lib/supabase/client');
+      const supabase = createClient();
+
+      const { data: transcriptionSegments } = await supabase
+        .from('transcription_segments')
+        .select('id, text, start_time, end_time, emotion_label, arousal, valence, dominance')
+        .eq('recording_id', uploadResult.recordingId)
+        .order('segment_index', { ascending: true }) as { data: TranscriptionSegmentData[] | null };
+
+      // 5. 平均VAD値を計算
+      let avgArousal = 0;
+      let avgValence = 0;
+      let avgDominance = 0;
+
+      if (transcriptionSegments && transcriptionSegments.length > 0) {
+        const validSegments = transcriptionSegments.filter(
+          s => s.arousal !== null && s.valence !== null && s.dominance !== null
+        );
+
+        if (validSegments.length > 0) {
+          avgArousal = validSegments.reduce((sum, s) => sum + s.arousal!, 0) / validSegments.length;
+          avgValence = validSegments.reduce((sum, s) => sum + s.valence!, 0) / validSegments.length;
+          avgDominance = validSegments.reduce((sum, s) => sum + s.dominance!, 0) / validSegments.length;
+        }
+      }
+
+      // 6. ユーザーメッセージをUIに追加（セグメントデータ付き）
       const userMessage: ChatMessage = {
         role: 'user',
-        content: whisperData.originalText,
+        content: whisperData.text, // フォールバック用
+        full_text: whisperData.text, // 句読点付き全文
         timestamp: new Date().toISOString(),
-        emotionData: emotionData?.emotion ? {
-          segments: emotionData.emotion.segments,
-          total_segments: emotionData.emotion.summary?.total_segments || emotionData.emotion.segments?.length || 0,
-          avg_arousal: emotionData.emotion.summary?.avg_arousal || 0,
-          avg_valence: emotionData.emotion.summary?.avg_valence || 0,
-          avg_dominance: emotionData.emotion.summary?.avg_dominance || 0
+        segments: transcriptionSegments || undefined,
+        emotionData: transcriptionSegments && transcriptionSegments.length > 0 ? {
+          segments: transcriptionSegments,
+          total_segments: transcriptionSegments.length,
+          avg_arousal: avgArousal,
+          avg_valence: avgValence,
+          avg_dominance: avgDominance
         } : undefined
       };
 
       setMessages(prev => [...prev, userMessage]);
 
-      // 4. AIが考え中のローディング表示を開始
-      // 注: ユーザーメッセージは既にWhisper APIがdialogue_turnsに保存済み
+      // 7. AIが考え中のローディング表示を開始
+      // 注: ユーザーメッセージは既にWhisper Segmented APIがdialogue_turnsに保存済み
       setLoadingMessage('AIが考えています...');
       setIsLoading(true);
 
-      // 5. AI応答生成
+      // 8. AI応答生成
       console.log('Calling AI Chat API...');
       const aiResponse = await fetch('/api/ai-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          userMessage: whisperData.originalText,
+          userMessage: whisperData.text,
           recordingId: uploadResult.recordingId,
         }),
       });
@@ -125,7 +166,7 @@ export function DiaryChatPage({ user, recordingLimit }: DiaryChatPageProps) {
       const aiData = await aiResponse.json();
       console.log('AI response:', aiData);
 
-      // 6. AI応答をチャットに追加（DBへの保存はAPI内で実施済み）
+      // 9. AI応答をチャットに追加（DBへの保存はAPI内で実施済み）
       const aiMessage: ChatMessage = {
         role: 'assistant',
         content: aiData.response,

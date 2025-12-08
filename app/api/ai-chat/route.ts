@@ -54,25 +54,44 @@ export async function POST(request: NextRequest) {
 
     // 2. 感情分析結果を取得（音声入力の場合のみ）
     let emotionData = null;
+    let segmentDetails = null;
     if (recordingId) {
-      const { data: emotionResult, error: emotionError } = await supabase
-        .from('emotion_analysis_results')
-        .select('avg_arousal, avg_valence, avg_dominance, dominant_emotion')
+      // 新しいシステム: transcription_segmentsから詳細データを取得
+      const { data: segments, error: segmentError } = await supabase
+        .from('transcription_segments')
+        .select('text, start_time, end_time, arousal, valence, dominance, emotion_label, segment_index')
         .eq('recording_id', recordingId)
-        .single();
+        .order('segment_index', { ascending: true });
 
-      if (!emotionError && emotionResult) {
-        emotionData = emotionResult;
-        console.log('Emotion data:', emotionData);
+      if (!segmentError && segments && segments.length > 0) {
+        segmentDetails = segments;
+
+        // 平均値を計算（全体傾向用）
+        const validSegments = segments.filter(s => s.arousal && s.valence && s.dominance);
+
+        if (validSegments.length > 0) {
+          const avgArousal = validSegments.reduce((sum, s) => sum + s.arousal, 0) / validSegments.length;
+          const avgValence = validSegments.reduce((sum, s) => sum + s.valence, 0) / validSegments.length;
+          const avgDominance = validSegments.reduce((sum, s) => sum + s.dominance, 0) / validSegments.length;
+
+          emotionData = {
+            avg_arousal: avgArousal,
+            avg_valence: avgValence,
+            avg_dominance: avgDominance,
+            dominant_emotion: validSegments[0]?.emotion_label || 'neutral'
+          };
+          console.log('Emotion data from segments:', emotionData);
+          console.log('Segment details count:', segmentDetails.length);
+        }
       } else {
-        console.log('No emotion data found or error:', emotionError);
+        console.log('No emotion segments found or error:', segmentError);
       }
     }
 
     // 3. プロンプト生成（初回か2回目以降かで変える）
     const isInitialMessage = !dialogueHistory || dialogueHistory.length === 0;
     const systemPrompt = generateSystemPrompt(isInitialMessage);
-    const userPrompt = generateUserPrompt(userMessage, emotionData, isInitialMessage);
+    const userPrompt = generateUserPrompt(userMessage, emotionData, segmentDetails, isInitialMessage);
 
     console.log('Is initial message:', isInitialMessage);
     console.log('System prompt:', systemPrompt);
@@ -99,10 +118,9 @@ export async function POST(request: NextRequest) {
     console.log('Calling OpenAI API with', messages.length, 'messages...');
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4.1-mini',
       messages: messages,
-      temperature: 0.7,
-      max_tokens: 500,
+      max_completion_tokens: 1000,
     });
 
     const aiResponse = completion.choices[0]?.message?.content;
@@ -139,47 +157,77 @@ export async function POST(request: NextRequest) {
  * システムプロンプト生成
  */
 function generateSystemPrompt(isInitialMessage: boolean): string {
+  const commonRules = `
+【対話の基本構造（必ず守ること）】
+以下の2段階構成で応答を作成してください。
+
+1. **前半：感情への言及（バリデーション）**
+   - **重要**: テキストの内容だけでなく、**「声の調子」や「雰囲気」から感じ取ったこと**を言葉にしてください。
+   - 単に「悔しいですね」と言うのではなく、「声からも悔しさが滲んでいますね」「とても弾んだ声で楽しそうですね」のように、**聴覚的な印象**を伝えることで、「ちゃんと聞いている」ことを示してください。
+   - **一致している場合**: 声の印象を強調して共感する。
+   - **ギャップがある場合**: 「言葉は気丈ですが、声は少し沈んでいるように聞こえます」と優しく指摘する。
+
+2. **後半：具体的な深掘り質問**
+   - 前半で触れた感情の「原因」や「背景」にある具体的な出来事について聞いてください。
+   - 漠然とした質問（「どうでしたか？」）は禁止です。
+   - ユーザーの言葉の中にある**具体的な単語（名詞・動詞）**を拾って、事実関係を掘り下げてください。
+   - 例：「プレゼンで失敗した」→「プレゼンの『どのパート』で詰まってしまったのですか？」
+
+【禁止事項】
+- 決めつけや説教、安易なアドバイス。
+- 些末な形容詞への過剰反応（話の核心にある感情に注目する）。
+- 「声のトーンが〜」という分析的な表現（あくまで自然な感想として伝える）。`;
+
   if (isInitialMessage) {
-    // 初回：感情分析を重視
     return `あなたは共感的なメンタルヘルスサポーターです。ユーザーの音声日記から本音や感情を引き出すことが役割です。
 
-【重要な原則】
-1. **音声トーンを重視する**: 文章が淡々としていても、音声分析データ（覚醒度・快度・優位性）から感情の手がかりを読み取る
-2. **言葉と声のギャップに注目**: 文章では「普通の一日」と言っていても、声に疲れや緊張があれば、それを優しく確認する
-3. **非侵襲的に寄り添う**: 押し付けがましくせず、「〜のように感じました」という柔らかい表現で感情を提示する
-4. **具体的な出来事を聞く**: 抽象的な質問ではなく、「今日の中で」「その時」など具体的な場面を聞く
-5. **選択肢を与える**: 「大変でしたか？」よりも「何か気になることはありましたか？それとも特に問題なく過ごせましたか？」
+${commonRules}
 
-【音声感情分析の活用方法】
-- 覚醒度が低い＋快度が低い → 疲労や落ち込みの可能性。エネルギーが下がっている理由を優しく探る
-- 覚醒度が高い＋快度が低い → ストレスや緊張の可能性。プレッシャーや不安を感じていないか確認
-- 覚醒度が高い＋快度が高い → ポジティブな興奮。良い出来事や嬉しかったことを引き出す
-- 覚醒度が低い＋快度が高い → 穏やかでリラックス。安心感や心地よさの源を聞く
-- 快度だけが低い → 感情的な負担がある可能性。何が心に引っかかっているか探る
+【応答の基本方針】
+1. テキストの内容を理解し、具体的な出来事を把握する
+2. 内容に対して自然に共感する
+3. 文脈から具体的に深掘りできる質問をする（漠然とした感情質問は禁止）
 
 【応答スタイル】
-- 2-3文で簡潔に（長くても4文まで）
-- 共感→観察→質問の流れ
-- 質問は1-2個に絞る
-- 答えやすい具体的な質問をする`;
+- 2-3文で簡潔に
+- 共感→具体的な質問の流れ
+- 質問は1個に絞る`;
   } else {
-    // 2回目以降：会話の流れを重視
     return `あなたは共感的なメンタルヘルスサポーターです。ユーザーとの対話を通じて、本音や感情を引き出すことが役割です。
 
-【重要な原則】
-1. **会話の流れを大切にする**: これまでの対話を踏まえて、自然な会話を続ける
-2. **前の回答を深掘りする**: ユーザーが話してくれたことに対して、さらに具体的に聞く
-3. **音声トーンの変化に注目**: 最新の音声データで感情の変化があれば、優しく確認する
-4. **繰り返しを避ける**: 既に聞いたことを再度聞かない。新しい角度から質問する
-5. **共感を示し続ける**: ユーザーの気持ちに寄り添い、安心して話せる雰囲気を作る
+${commonRules}
+
+【応答の基本方針】
+1. これまでの対話を踏まえて、自然な会話を続ける
+2. ユーザーが話してくれた具体的な内容についてさらに聞く
+3. 繰り返しを避け、新しい角度から質問する
 
 【応答スタイル】
-- 2-3文で簡潔に（長くても4文まで）
+- 2-3文で簡潔に
 - これまでの会話を自然に引用・参照する
-- 「さっき〜とおっしゃっていましたが」など、会話の連続性を意識
-- 質問は1個に絞る（深掘り重視）
-- より具体的で答えやすい質問をする`;
+- 質問は1個に絞る（具体的な深掘り）`;
   }
+}
+
+/**
+ * セグメント情報を整形してプロンプトに含める（感情分析強化版）
+ * 
+ * VAD値（音声分析）のみを信頼し、テキストベースの感情判定は一切行わない
+ */
+function formatSegmentDetails(segments: any[]): string {
+  if (!segments || segments.length === 0) return '';
+
+  // シンプルにセグメントごとのテキストと感情ラベルのみ
+  let formattedSegments = '';
+  segments.forEach((seg, idx) => {
+    const segNum = idx + 1;
+    const emotionLabel = seg.emotion_label || '中立';
+
+    formattedSegments += `セグメント${segNum}: \"${seg.text}\"\n`;
+    formattedSegments += `→ 感情: ${emotionLabel}\n\n`;
+  });
+
+  return formattedSegments;
 }
 
 /**
@@ -193,20 +241,19 @@ function generateUserPrompt(
     avg_dominance: number;
     dominant_emotion: string;
   } | null,
+  segmentDetails: any[] | null,
   isInitialMessage: boolean
 ): string {
   // 2回目以降は簡潔なプロンプト（会話履歴が既にある）
   if (!isInitialMessage) {
-    if (emotionData) {
-      const emotionAnalysis = analyzeVADEmotion(emotionData);
+    if (emotionData && segmentDetails && segmentDetails.length > 0) {
+      const formattedSegments = formatSegmentDetails(segmentDetails);
 
       return `【ユーザーの最新の発言】
 "${userMessage}"
 
-【音声分析】
-覚醒度: ${emotionData.avg_arousal.toFixed(2)}, 快度: ${emotionData.avg_valence.toFixed(2)}, 優位性: ${emotionData.avg_dominance.toFixed(2)}
-感情: ${emotionAnalysis.emotionLabel}
-
+【音声分析（参考情報）】
+${formattedSegments}
 これまでの会話を踏まえて、自然に対話を続けてください。`;
     }
 
@@ -217,210 +264,22 @@ function generateUserPrompt(
   }
 
   // 初回は詳細なプロンプト
-  // 文章から感情を判定
-  const hasEmotionInText = detectEmotionInText(userMessage);
+  // 音声データがある場合は、セグメント詳細を含めて提示
+  if (emotionData && segmentDetails && segmentDetails.length > 0) {
+    const formattedSegments = formatSegmentDetails(segmentDetails);
 
-  // 音声データがある場合は常に両方を提示
-  if (emotionData) {
-    const emotionAnalysis = analyzeVADEmotion(emotionData);
-
-    // 文章と音声の両方に感情がある場合
-    if (hasEmotionInText && emotionAnalysis.hasSignificantEmotion) {
-      return `【ユーザーの発言】
-"${userMessage}"
-
-【音声分析結果】
-- 覚醒度: ${emotionData.avg_arousal.toFixed(2)} / 5.0
-- 快度: ${emotionData.avg_valence.toFixed(2)} / 5.0
-- 優位性: ${emotionData.avg_dominance.toFixed(2)} / 5.0
-- 検出された感情: ${emotionAnalysis.emotionLabel}
-
-【観察】
-発言内容には感情表現が含まれており、音声トーンからも${emotionAnalysis.description}が感じられます。
-
-【あなたの役割】
-文章の内容と音声分析データの両方を考慮して、ユーザーの感情をより深く理解し、本音を引き出してください。`;
-    }
-
-    // 文章は感情的だが、音声は中立的
-    if (hasEmotionInText && !emotionAnalysis.hasSignificantEmotion) {
-      return `【ユーザーの発言】
-"${userMessage}"
-
-【音声分析結果】
-- 覚醒度: ${emotionData.avg_arousal.toFixed(2)} / 5.0
-- 快度: ${emotionData.avg_valence.toFixed(2)} / 5.0
-- 優位性: ${emotionData.avg_dominance.toFixed(2)} / 5.0
-- 検出された感情: ${emotionAnalysis.emotionLabel}
-
-【観察】
-発言内容には感情表現が含まれていますが、音声トーンは比較的落ち着いています。
-
-【あなたの役割】
-言葉では感情を表現していても、声のトーンが落ち着いている理由を探ってください。もしかすると、表面的な感情と内面の気持ちにギャップがあるかもしれません。`;
-    }
-
-    // 文章は中立的だが、音声に感情がある
-    if (!hasEmotionInText && emotionAnalysis.hasSignificantEmotion) {
-      return `【ユーザーの発言】
-"${userMessage}"
-
-【音声分析結果】
-- 覚醒度: ${emotionData.avg_arousal.toFixed(2)} / 5.0
-- 快度: ${emotionData.avg_valence.toFixed(2)} / 5.0
-- 優位性: ${emotionData.avg_dominance.toFixed(2)} / 5.0
-- 検出された感情: ${emotionAnalysis.emotionLabel}
-
-【観察】
-発言は事実の記述のみですが、音声トーンからは${emotionAnalysis.description}が感じられます。
-
-【あなたの役割】
-言葉にしていない感情が声に表れています。特に「${emotionAnalysis.emotionLabel}」の兆候が見られるため、優しく寄り添いながら、その感情について話せるように導いてください。`;
-    }
-  }
-
-  // 音声データがない、または両方とも中立的
-  if (hasEmotionInText) {
     return `【ユーザーの発言】
 "${userMessage}"
 
-【観察】
-発言内容から感情が読み取れます。
-
-【あなたの役割】
-発言内容を基に、その感情についてさらに深く探ってください。`;
+【音声分析（参考情報）】
+${formattedSegments}
+発言内容を基に、具体的な出来事や背景にある感情を引き出してください。`;
   }
 
-  // 完全に中立的
+  // 音声データがない場合（テキスト入力など）
   return `【ユーザーの発言】
 "${userMessage}"
 
-【観察】
-事実の記述が中心の発言です。
-
 【あなたの役割】
-具体的な出来事について質問し、その背景にある感情や考えを引き出してください。`;
-}
-
-/**
- * 文章から感情を検出（簡易版）
- */
-function detectEmotionInText(text: string): boolean {
-  const emotionKeywords = [
-    // ネガティブ
-    '悲しい', '辛い', '苦しい', '嫌', 'イライラ', '怒', '疲れ', 'ストレス',
-    '不安', '心配', '落ち込', 'むかつ', '腹立', '困', '大変',
-    // ポジティブ
-    '嬉しい', '楽しい', '幸せ', '良かった', '最高', '素晴らしい', 'ワクワク',
-    '喜び', '感動', '安心',
-  ];
-
-  return emotionKeywords.some(keyword => text.includes(keyword));
-}
-
-/**
- * VAD値から感情を分析
- */
-function analyzeVADEmotion(emotionData: {
-  avg_arousal: number;
-  avg_valence: number;
-  avg_dominance: number;
-}): {
-  hasSignificantEmotion: boolean;
-  description: string;
-  emotionLabel: string;
-} {
-  const { avg_arousal, avg_valence, avg_dominance } = emotionData;
-
-  // 中立範囲を狭める（より敏感に検出）
-  const isNeutralValence = avg_valence >= 3.7 && avg_valence <= 4.3;
-  const isNeutralArousal = avg_arousal >= 3.7 && avg_arousal <= 4.3;
-
-  // 完全に中立的な場合（かなり狭い範囲）
-  if (isNeutralValence && isNeutralArousal) {
-    return {
-      hasSignificantEmotion: false,
-      description: '特に感情的な変化が見られない中立的な状態',
-      emotionLabel: '中立'
-    };
-  }
-
-  // 悲しみ・疲労（低覚醒・低快度） - 閾値を緩和
-  if (avg_arousal <= 3.3 && avg_valence <= 3.8) {
-    return {
-      hasSignificantEmotion: true,
-      description: '元気がない様子、疲労感、エネルギーの低下',
-      emotionLabel: '悲しみ・疲労'
-    };
-  }
-
-  // ストレス・緊張（高覚醒・低快度）
-  if (avg_arousal >= 3.8 && avg_valence <= 3.7) {
-    return {
-      hasSignificantEmotion: true,
-      description: '緊張感、ストレス、不安の兆候',
-      emotionLabel: 'ストレス・緊張'
-    };
-  }
-
-  // 喜び・興奮（高覚醒・高快度）
-  if (avg_arousal >= 3.8 && avg_valence >= 4.2) {
-    return {
-      hasSignificantEmotion: true,
-      description: '明るさ、活気、ポジティブな興奮',
-      emotionLabel: '喜び・興奮'
-    };
-  }
-
-  // 穏やか・リラックス（低覚醒・高快度）
-  if (avg_arousal <= 3.3 && avg_valence >= 4.2) {
-    return {
-      hasSignificantEmotion: true,
-      description: '穏やかさ、リラックス、安心感',
-      emotionLabel: '穏やか'
-    };
-  }
-
-  // 快度が低め（疲れ・落ち込み傾向） - 閾値を4.0未満に引き上げ
-  if (avg_valence < 4.0 && avg_arousal <= 3.5) {
-    return {
-      hasSignificantEmotion: true,
-      description: '少し疲れている様子、やや元気がない',
-      emotionLabel: '疲労'
-    };
-  }
-
-  // 快度が低い（一般的なネガティブ傾向）
-  if (avg_valence < 3.7) {
-    return {
-      hasSignificantEmotion: true,
-      description: 'やや沈んだ様子、感情的な負担の可能性',
-      emotionLabel: '落ち込み'
-    };
-  }
-
-  // 快度が高い場合
-  if (avg_valence >= 4.3) {
-    return {
-      hasSignificantEmotion: true,
-      description: 'ポジティブな気分、満足感',
-      emotionLabel: '満足'
-    };
-  }
-
-  // 覚醒度が低い（エネルギー低下）
-  if (avg_arousal < 3.5) {
-    return {
-      hasSignificantEmotion: true,
-      description: 'エネルギーが低め、やや疲れている可能性',
-      emotionLabel: '疲労'
-    };
-  }
-
-  // その他の場合
-  return {
-    hasSignificantEmotion: false,
-    description: '特に顕著な感情的傾向は見られない状態',
-    emotionLabel: '中立'
-  };
+発言内容を基に、具体的な出来事や背景にある感情を引き出してください。`;
 }

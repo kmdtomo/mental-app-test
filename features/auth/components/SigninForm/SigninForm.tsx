@@ -30,7 +30,9 @@ export function SigninForm({ className, ...props }: UserAuthFormProps) {
           title: "成功",
           description: "ログインに成功しました",
         });
-        redirect("/voice-diary");
+        // セッションが安定するまで少し待つ
+        await new Promise(resolve => setTimeout(resolve, 500));
+        redirect("/dashboard-web");
       } else {
         toast({
           title: "エラー",

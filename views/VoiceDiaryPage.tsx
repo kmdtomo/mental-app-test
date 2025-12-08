@@ -152,49 +152,48 @@ export function VoiceDiaryPage({ user, recordingLimit }: VoiceDiaryPageProps) {
       const uploadResult = await uploadAudio(blob);
       console.log('Upload result:', uploadResult);
       
-      // 2. Call Whisper API and Emotion Analysis API in parallel
-      console.log('Step 2: Calling Whisper API and Emotion Analysis API in parallel...');
-      const [whisperResponse, emotionResponse] = await Promise.all([
-        // Whisper API
-        fetch('/api/whisper', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            recordingId: uploadResult.recordingId,
-            filePath: uploadResult.filePath,
-            duration: duration,
-          }),
+      // 2. Call NEW Whisper Segmented API (句読点分割)
+      console.log('Step 2: Calling Whisper Segmented API...');
+      const whisperResponse = await fetch('/api/whisper-segmented', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          recordingId: uploadResult.recordingId,
+          filePath: uploadResult.filePath,
         }),
-        // Emotion Analysis API
-        fetch('/api/analyze-emotion', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            recordingId: uploadResult.recordingId,
-            filePath: uploadResult.filePath,
-          }),
-        })
-      ]);
-      
+      });
+
       if (!whisperResponse.ok) {
-        throw new Error('Whisper API failed');
+        throw new Error('Whisper Segmented API failed');
       }
+
+      const whisperData = await whisperResponse.json();
+      console.log('Whisper Segmented result:', whisperData);
+      setTranscription(whisperData.text);
+
+      // 3. Call NEW Emotion Analysis Segmented API (セグメント単位)
+      console.log('Step 3: Calling Emotion Analysis Segmented API...');
+      const emotionResponse = await fetch('/api/analyze-emotion-segmented', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          recordingId: uploadResult.recordingId,
+          filePath: uploadResult.filePath,
+        }),
+      });
+
       if (!emotionResponse.ok) {
-        console.error('Emotion API failed:', await emotionResponse.text());
+        console.error('Emotion Segmented API failed:', await emotionResponse.text());
         // Continue even if emotion analysis fails
       }
-      
-      const whisperData = await whisperResponse.json();
-      console.log('Whisper result:', whisperData);
-      setTranscription(whisperData.originalText);
-      
+
       // Set emotion result if successful
       if (emotionResponse.ok) {
         const emotionData = await emotionResponse.json();
-        console.log('Emotion result:', emotionData);
-        setEmotionResult(emotionData.emotion);
+        console.log('Emotion Segmented result:', emotionData);
+        setEmotionResult(emotionData);
       }
 
       // 3. Call Claude 3.5 Sonnet for formatting (コメントアウト)

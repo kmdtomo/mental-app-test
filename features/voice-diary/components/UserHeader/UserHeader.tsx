@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 interface UserHeaderProps {
-  user: {
+  user?: {
     email?: string;
     user_metadata?: {
       name?: string;
@@ -17,10 +17,10 @@ interface UserHeaderProps {
 
 export function UserHeader({ user }: UserHeaderProps) {
   const router = useRouter();
-  
-  const displayName = user.user_metadata?.name || 
-                     user.user_metadata?.full_name || 
-                     user.email?.split('@')[0] || 
+
+  const displayName = user?.user_metadata?.name ||
+                     user?.user_metadata?.full_name ||
+                     user?.email?.split('@')[0] ||
                      'ユーザー';
   const initials = displayName.slice(0, 2).toUpperCase();
 
@@ -75,7 +75,7 @@ export function UserHeader({ user }: UserHeaderProps) {
             <div className="hidden md:flex items-center gap-2 text-sm">
               <div className="text-right leading-tight">
                 <div className="font-medium">{displayName}</div>
-                <div className="text-xs text-muted-foreground">{user.email}</div>
+                <div className="text-xs text-muted-foreground">{user?.email}</div>
               </div>
               <div className="flex size-8 items-center justify-center rounded-full bg-muted ml-2 text-foreground/80">
                 <span className="text-[11px] font-semibold leading-none">{initials}</span>

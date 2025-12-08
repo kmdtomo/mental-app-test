@@ -1,0 +1,1 @@
+export { EmotionChart } from './EmotionChart';
