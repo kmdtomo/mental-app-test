@@ -90,7 +90,9 @@ export async function POST(request: NextRequest) {
 
     // 3. プロンプト生成（初回か2回目以降かで変える）
     const isInitialMessage = !dialogueHistory || dialogueHistory.length === 0;
-    const systemPrompt = generateSystemPrompt(isInitialMessage);
+    // ユーザーの発言回数をカウント（user roleの数）
+    const userTurnCount = dialogueHistory?.filter(turn => turn.role === 'user').length || 0;
+    const systemPrompt = generateSystemPrompt(isInitialMessage, userTurnCount);
     const userPrompt = generateUserPrompt(userMessage, emotionData, segmentDetails, isInitialMessage);
 
     console.log('Is initial message:', isInitialMessage);
@@ -118,7 +120,7 @@ export async function POST(request: NextRequest) {
     console.log('Calling OpenAI API with', messages.length, 'messages...');
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4.1-mini',
+      model: 'gpt-4o',
       messages: messages,
       max_completion_tokens: 1000,
     });
@@ -156,56 +158,89 @@ export async function POST(request: NextRequest) {
 /**
  * システムプロンプト生成
  */
-function generateSystemPrompt(isInitialMessage: boolean): string {
+function generateSystemPrompt(isInitialMessage: boolean, turnCount: number = 0): string {
+  const baseRole = `あなたは共感的なメンタルヘルスサポーターです。音声感情認識データを活用して、ユーザーの本音や感情を引き出し、ポジティブな方向への情動調整をサポートします。`;
+
+  const voiceDataGuidelines = `
+【音声感情データの読み方】
+あなたには音声分析の結果が提供されます。これを活用してください：
+- 「声のエネルギー」: 高い＝活発・興奮、低い＝疲労・落ち込み
+- 「感情の明るさ」: ポジティブ＝楽しい・嬉しい、ネガティブ＝悲しい・不安
+- 「声の自信度」: 自信あり＝確信を持っている、控えめ＝不安・迷い
+- 「前セグメントからの変化」: 話している途中での感情の揺れを示す
+
+【テキストと声のギャップに注目】
+言葉では「大丈夫」「問題ない」と言っていても、声のエネルギーが低かったりネガティブ傾向の場合は、本音を隠している可能性があります。
+その場合は「言葉ではそうおっしゃっていますが、声からは少し違う印象を受けました」のように優しく触れてください。`;
+
   const commonRules = `
-【対話の基本構造（必ず守ること）】
-以下の2段階構成で応答を作成してください。
+【対話の3段階構成（必ず守ること）】
 
-1. **前半：感情への言及（バリデーション）**
-   - **重要**: テキストの内容だけでなく、**「声の調子」や「雰囲気」から感じ取ったこと**を言葉にしてください。
-   - 単に「悔しいですね」と言うのではなく、「声からも悔しさが滲んでいますね」「とても弾んだ声で楽しそうですね」のように、**聴覚的な印象**を伝えることで、「ちゃんと聞いている」ことを示してください。
-   - **一致している場合**: 声の印象を強調して共感する。
-   - **ギャップがある場合**: 「言葉は気丈ですが、声は少し沈んでいるように聞こえます」と優しく指摘する。
+1. **バリデーション（感情の受け止め）**
+   - 音声データから読み取れる感情状態を、自然な言葉で伝える
+   - 「お話を聞いていて、少しお疲れのような印象を受けました」
+   - 「声に力強さがあって、やりがいを感じていらっしゃるようですね」
+   - ※分析的な表現（「arousalが〜」「トーンが〜」）は禁止
 
-2. **後半：具体的な深掘り質問**
-   - 前半で触れた感情の「原因」や「背景」にある具体的な出来事について聞いてください。
-   - 漠然とした質問（「どうでしたか？」）は禁止です。
-   - ユーザーの言葉の中にある**具体的な単語（名詞・動詞）**を拾って、事実関係を掘り下げてください。
-   - 例：「プレゼンで失敗した」→「プレゼンの『どのパート』で詰まってしまったのですか？」
+2. **深掘り（背景の理解）**
+   - 感情の原因となった具体的な出来事を聞く
+   - ユーザーの発言から具体的な単語（名詞・動詞）を拾って質問
+   - 漠然とした質問（「どうでしたか？」「気分は？」）は禁止
+   - 例：「プレゼンで詰まった」→「どの部分で詰まってしまったんですか？」
+
+3. **リフレーミング（視点の転換）** ※対話が3往復以上進んだら意識する
+   - ユーザーが気づいていない強みや対処リソースを見つけて伝える
+   - 「〜という対処ができていたのは素晴らしいですね」
+   - 「その経験から学んだことはありますか？」
+   - ※説教やアドバイスではなく、ユーザー自身が気づくよう促す
 
 【禁止事項】
-- 決めつけや説教、安易なアドバイス。
-- 些末な形容詞への過剰反応（話の核心にある感情に注目する）。
-- 「声のトーンが〜」という分析的な表現（あくまで自然な感想として伝える）。`;
+- 決めつけ、説教、安易なアドバイス
+- 感情の押し付け（「辛かったですね」と断定しない）
+- 反芻思考の助長（ネガティブな話題を深掘りしすぎない）
+- 「〜すべき」「〜した方がいい」という指示的表現`;
 
   if (isInitialMessage) {
-    return `あなたは共感的なメンタルヘルスサポーターです。ユーザーの音声日記から本音や感情を引き出すことが役割です。
+    return `${baseRole}
+
+${voiceDataGuidelines}
 
 ${commonRules}
 
-【応答の基本方針】
-1. テキストの内容を理解し、具体的な出来事を把握する
-2. 内容に対して自然に共感する
-3. 文脈から具体的に深掘りできる質問をする（漠然とした感情質問は禁止）
+【初回応答のポイント】
+- まずは話してくれたことへの感謝を示す
+- 音声データから感じ取った印象を自然に伝える
+- 1つだけ具体的な質問をする（深掘りフェーズ）
 
 【応答スタイル】
 - 2-3文で簡潔に
-- 共感→具体的な質問の流れ
-- 質問は1個に絞る`;
+- 質問は1つに絞る`;
   } else {
-    return `あなたは共感的なメンタルヘルスサポーターです。ユーザーとの対話を通じて、本音や感情を引き出すことが役割です。
+    // 3回目以降は区切り提案の指示を追加
+    const closureGuideline = turnCount >= 3 ? `
+
+【対話の区切りについて】
+会話が自然に一区切りついたと感じたら、応答の最後に「他に話しておきたいことはありますか？」と聞いてください。
+ただし、まだ深掘りが必要だと感じたら、質問を続けてください。
+これはあなたの判断に任せます。` : '';
+
+    return `${baseRole}
+
+${voiceDataGuidelines}
 
 ${commonRules}
 
-【応答の基本方針】
-1. これまでの対話を踏まえて、自然な会話を続ける
-2. ユーザーが話してくれた具体的な内容についてさらに聞く
-3. 繰り返しを避け、新しい角度から質問する
+【継続応答のポイント】
+- これまでの対話を踏まえて自然に会話を続ける
+- 同じ質問や似た質問の繰り返しを避ける
+- 音声データの変化（前回との違い）にも注目する
+- 対話が進んだら、リフレーミング（強みの発見、別視点の提示）を意識する
+${closureGuideline}
 
 【応答スタイル】
 - 2-3文で簡潔に
 - これまでの会話を自然に引用・参照する
-- 質問は1個に絞る（具体的な深掘り）`;
+- 質問は1つに絞る`;
   }
 }
 
@@ -217,17 +252,60 @@ ${commonRules}
 function formatSegmentDetails(segments: any[]): string {
   if (!segments || segments.length === 0) return '';
 
-  // シンプルにセグメントごとのテキストと感情ラベルのみ
-  let formattedSegments = '';
+  let result = '';
+  let prevArousal: number | null = null;
+  let prevValence: number | null = null;
+
   segments.forEach((seg, idx) => {
     const segNum = idx + 1;
     const emotionLabel = seg.emotion_label || '中立';
+    const arousal = seg.arousal;
+    const valence = seg.valence;
+    const dominance = seg.dominance;
 
-    formattedSegments += `セグメント${segNum}: \"${seg.text}\"\n`;
-    formattedSegments += `→ 感情: ${emotionLabel}\n\n`;
+    result += `セグメント${segNum}: "${seg.text}"\n`;
+    result += `  感情: ${emotionLabel}\n`;
+
+    // VAD値を人間が理解しやすい表現に変換
+    if (arousal !== null && arousal !== undefined) {
+      const energyLevel = arousal > 0.6 ? '高い' : arousal > 0.4 ? 'やや高い' : arousal > 0.25 ? '普通' : '低い';
+      result += `  声のエネルギー: ${energyLevel}\n`;
+    }
+
+    if (valence !== null && valence !== undefined) {
+      const positivity = valence > 0.6 ? 'ポジティブ' : valence > 0.4 ? 'やや明るい' : valence > 0.25 ? '落ち着いている' : 'ネガティブ傾向';
+      result += `  感情の明るさ: ${positivity}\n`;
+    }
+
+    if (dominance !== null && dominance !== undefined) {
+      const confidence = dominance > 0.6 ? '自信あり' : dominance > 0.4 ? '普通' : '控えめ・不安気';
+      result += `  声の自信度: ${confidence}\n`;
+    }
+
+    // 前セグメントからの変化を検出
+    if (prevArousal !== null && prevValence !== null && arousal !== null && valence !== null) {
+      const arousalChange = arousal - prevArousal;
+      const valenceChange = valence - prevValence;
+
+      const changes: string[] = [];
+      if (Math.abs(arousalChange) > 0.15) {
+        changes.push(arousalChange > 0 ? '活力↑' : '活力↓');
+      }
+      if (Math.abs(valenceChange) > 0.15) {
+        changes.push(valenceChange > 0 ? '気分↑' : '気分↓');
+      }
+
+      if (changes.length > 0) {
+        result += `  ※前セグメントからの変化: ${changes.join('、')}\n`;
+      }
+    }
+
+    result += '\n';
+    prevArousal = arousal;
+    prevValence = valence;
   });
 
-  return formattedSegments;
+  return result;
 }
 
 /**
@@ -244,17 +322,81 @@ function generateUserPrompt(
   segmentDetails: any[] | null,
   isInitialMessage: boolean
 ): string {
-  // 2回目以降は簡潔なプロンプト（会話履歴が既にある）
+  // ギャップ検出ロジック
+  const detectGap = (text: string, emotionData: any): string | null => {
+    if (!emotionData) return null;
+
+    // テキストにポジティブワードが含まれているか
+    const positiveWords = ['大丈夫', '問題ない', '平気', '元気', '楽しい', '嬉しい', '良かった', 'うまくいった'];
+    const negativeWords = ['疲れた', '辛い', '悲しい', '不安', '心配', '失敗', 'ダメ', '最悪'];
+
+    const hasPositiveText = positiveWords.some(word => text.includes(word));
+    const hasNegativeText = negativeWords.some(word => text.includes(word));
+
+    const isVoiceNegative = emotionData.avg_valence < 0.35 || emotionData.avg_arousal < 0.3;
+    const isVoicePositive = emotionData.avg_valence > 0.55 && emotionData.avg_arousal > 0.4;
+
+    // ポジティブな言葉 + ネガティブな声 = ギャップあり
+    if (hasPositiveText && isVoiceNegative) {
+      return '【注目】言葉はポジティブですが、声からは疲れや落ち込みが感じられます。本音を隠している可能性があります。';
+    }
+
+    // ネガティブな言葉 + ポジティブな声 = 乗り越えつつある可能性
+    if (hasNegativeText && isVoicePositive) {
+      return '【注目】辛い内容を話していますが、声には力があります。乗り越えつつある、または話すことで整理できている可能性があります。';
+    }
+
+    return null;
+  };
+
+  // 感情の全体傾向サマリー
+  const getEmotionSummary = (emotionData: any): string => {
+    if (!emotionData) return '';
+
+    const { avg_arousal, avg_valence, avg_dominance, dominant_emotion } = emotionData;
+
+    let summary = `【音声全体の傾向】\n`;
+    summary += `主な感情: ${dominant_emotion}\n`;
+
+    if (avg_arousal < 0.3) {
+      summary += `声のエネルギーが低く、疲労感や落ち込みが感じられます。\n`;
+    } else if (avg_arousal > 0.6) {
+      summary += `声に活力があり、興奮や意欲が感じられます。\n`;
+    }
+
+    if (avg_valence < 0.35) {
+      summary += `全体的にネガティブな感情傾向です。\n`;
+    } else if (avg_valence > 0.55) {
+      summary += `全体的にポジティブな感情傾向です。\n`;
+    }
+
+    if (avg_dominance < 0.35) {
+      summary += `声に自信のなさや不安が表れています。\n`;
+    }
+
+    return summary;
+  };
+
+  // 2回目以降
   if (!isInitialMessage) {
     if (emotionData && segmentDetails && segmentDetails.length > 0) {
       const formattedSegments = formatSegmentDetails(segmentDetails);
+      const gapAnalysis = detectGap(userMessage, emotionData);
+      const emotionSummary = getEmotionSummary(emotionData);
 
-      return `【ユーザーの最新の発言】
+      let prompt = `【ユーザーの最新の発言】
 "${userMessage}"
 
-【音声分析（参考情報）】
-${formattedSegments}
-これまでの会話を踏まえて、自然に対話を続けてください。`;
+${emotionSummary}
+【セグメント詳細】
+${formattedSegments}`;
+
+      if (gapAnalysis) {
+        prompt += `\n${gapAnalysis}\n`;
+      }
+
+      prompt += `\nこれまでの会話を踏まえて、自然に対話を続けてください。`;
+      return prompt;
     }
 
     return `【ユーザーの最新の発言】
@@ -263,23 +405,30 @@ ${formattedSegments}
 これまでの会話を踏まえて、自然に対話を続けてください。`;
   }
 
-  // 初回は詳細なプロンプト
-  // 音声データがある場合は、セグメント詳細を含めて提示
+  // 初回
   if (emotionData && segmentDetails && segmentDetails.length > 0) {
     const formattedSegments = formatSegmentDetails(segmentDetails);
+    const gapAnalysis = detectGap(userMessage, emotionData);
+    const emotionSummary = getEmotionSummary(emotionData);
 
-    return `【ユーザーの発言】
+    let prompt = `【ユーザーの発言】
 "${userMessage}"
 
-【音声分析（参考情報）】
-${formattedSegments}
-発言内容を基に、具体的な出来事や背景にある感情を引き出してください。`;
+${emotionSummary}
+【セグメント詳細】
+${formattedSegments}`;
+
+    if (gapAnalysis) {
+      prompt += `\n${gapAnalysis}\n`;
+    }
+
+    prompt += `\n音声データを参考に、ユーザーの感情に寄り添いながら、具体的な出来事や背景を聞いてください。`;
+    return prompt;
   }
 
-  // 音声データがない場合（テキスト入力など）
+  // 音声データがない場合
   return `【ユーザーの発言】
 "${userMessage}"
 
-【あなたの役割】
 発言内容を基に、具体的な出来事や背景にある感情を引き出してください。`;
 }
