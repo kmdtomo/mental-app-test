@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { WebSidebar } from '@/components/navigation/WebSidebar';
-import { Mic, FileText, Activity, ChevronDown, ChevronUp, Square, Loader2 } from 'lucide-react';
+import { Mic, FileText, Activity, ChevronDown, ChevronUp, Square, Loader2, Trash2 } from 'lucide-react';
 import { EmotionChart } from '@/features/diary-detail-web/components';
 import { getTodayDialogue } from '@/features/diary-chat/actions/chatActions';
 import { useVoiceRecorder } from '@/features/voice-diary/hooks/useVoiceRecorder';
@@ -151,6 +151,7 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit,
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [recordingLimit, setRecordingLimit] = useState(initialRecordingLimit);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recordingDurationRef = useRef(0);
 
@@ -199,6 +200,49 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit,
     const result = await getTodayDialogue();
     if (result.success && result.messages) {
       setMessages(result.messages as Message[]);
+    }
+  };
+
+  // 最後の1ラリーを削除
+  const handleDeleteLastTurn = async () => {
+    if (isDeleting || messages.length === 0) return;
+
+    if (!confirm('最後の1ラリー（ユーザー発言とAI応答）を削除しますか？\n関連する音声データとセグメントも削除されます。')) {
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      const response = await fetch('/api/delete-last-turn', {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        // UIからも削除（最後のassistantとuserを削除）
+        setMessages(prev => {
+          const newMessages = [...prev];
+          // 最後がassistantなら削除
+          if (newMessages.length > 0 && newMessages[newMessages.length - 1].role === 'assistant') {
+            newMessages.pop();
+          }
+          // その前がuserなら削除
+          if (newMessages.length > 0 && newMessages[newMessages.length - 1].role === 'user') {
+            newMessages.pop();
+          }
+          return newMessages;
+        });
+        console.log('Last turn deleted successfully');
+      } else {
+        const errorData = await response.json();
+        console.error('Delete failed:', errorData);
+        alert('削除に失敗しました: ' + (errorData.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Delete error:', error);
+      alert('削除中にエラーが発生しました');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -570,6 +614,20 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit,
               <FileText className="text-lg" size={18} />
               <span className="text-lg whitespace-nowrap font-semibold">
                 {isGeneratingSummary ? '生成中...' : '日記を生成'}
+              </span>
+            </button>
+          </div>
+
+          {/* Delete Last Turn Button (音声分析テスト用) */}
+          <div className="mt-2">
+            <button
+              onClick={handleDeleteLastTurn}
+              disabled={isDeleting || messages.length === 0 || isHistoryView}
+              className="flex justify-center items-center gap-3 w-full py-3 px-6 rounded-full bg-red-500/80 text-white shadow-[0_2px_8px_rgba(239,68,68,0.2)] hover:bg-red-600 hover:shadow-[0_4px_12px_rgba(239,68,68,0.3)] transition-all disabled:bg-gray-300 disabled:text-white/60 disabled:cursor-not-allowed disabled:shadow-none"
+            >
+              <Trash2 className="text-lg" size={18} />
+              <span className="text-base whitespace-nowrap font-semibold">
+                {isDeleting ? '削除中...' : '最後の1ラリーを削除'}
               </span>
             </button>
           </div>

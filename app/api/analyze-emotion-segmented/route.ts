@@ -66,6 +66,12 @@ export async function POST(request: NextRequest) {
         const duration = segment.end_time - segment.start_time;
         console.log(`[Segment ${segment.segment_index}] Analyzing: "${segment.text}" (${segment.start_time}s - ${segment.end_time}s, duration: ${duration.toFixed(2)}s)`);
 
+        // 0秒以下のセグメントはスキップ（FFmpegエラー防止）
+        if (duration <= 0.05) {
+          console.log(`[Segment ${segment.segment_index}] Skipping: duration too short (${duration.toFixed(3)}s)`);
+          return null;
+        }
+
         // セグメント用の一時ファイル
         const segmentWavPath = path.join(tempDir, `segment_${recordingId}_${segment.segment_index}.wav`);
 
@@ -79,79 +85,41 @@ export async function POST(request: NextRequest) {
         const fileStats = await fs.stat(segmentWavPath);
         console.log(`[Segment ${segment.segment_index}] Cut audio file created: ${fileStats.size} bytes`);
 
-        // Python感情分析実行
-        const scriptPath = path.join(tempDir, `emotion_${recordingId}_${segment.segment_index}.py`);
-        const pythonScript = `
-import sys
-sys.path.append('/Users/komodatomo/Desktop/onsei-laboratory/vad_deeplearning')
-from inference import inference_core
-import json
-import os
+        // Modalへ送信するためにファイルを読み込む
+        const wavBuffer = await fs.readFile(segmentWavPath);
+        const audioBase64 = wavBuffer.toString('base64');
+        const emotionAnalysisUrl = process.env.NEXT_PUBLIC_EMOTION_ANALYSIS_URL;
 
-temp_wav = '${segmentWavPath}'
-
-try:
-    print(f"[Python] Analyzing: {temp_wav}", file=sys.stderr)
-    result = inference_core(temp_wav)
-    print(f"[Python] Raw result: {result}", file=sys.stderr)
-
-    if result and 'summary' in result:
-        # セグメントが短いので、summary（平均値）のみ使用
-        print(json.dumps(result['summary']))
-    else:
-        print(json.dumps({"error": "No summary in result"}))
-except Exception as e:
-    import traceback
-    print(json.dumps({"error": str(e), "traceback": traceback.format_exc()}))
-finally:
-    try:
-        if os.path.exists(temp_wav):
-            os.remove(temp_wav)
-    except:
-        pass
-`;
-
-        await fs.writeFile(scriptPath, pythonScript);
-
-        const { stdout, stderr } = await execAsync(
-          `cd /Users/komodatomo/Desktop/onsei-laboratory/vad_deeplearning && python3 ${scriptPath}`,
-          {
-            env: {
-              ...process.env,
-              PYTHONIOENCODING: 'utf-8',
-            }
-          }
-        );
-
-        if (stderr) {
-          console.log(`[Segment ${segment.segment_index}] Python stderr:`, stderr);
+        if (!emotionAnalysisUrl) {
+          throw new Error("Emotion analysis URL is not configured");
         }
 
-        // JSONパース
-        const lines = stdout.split('\n').filter(line => line.trim());
-        let pythonResult = null;
+        console.log(`[Segment ${segment.segment_index}] Calling Modal...`);
 
-        for (let i = lines.length - 1; i >= 0; i--) {
-          const line = lines[i];
-          if (line.startsWith('{')) {
-            try {
-              pythonResult = JSON.parse(line);
-              break;
-            } catch (e) {
-              continue;
-            }
-          }
-        }
+        // Modalへリクエスト
+        const lambdaResponse = await fetch(emotionAnalysisUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            audio_base64: audioBase64,
+            format: 'wav'
+          })
+        });
 
-        if (!pythonResult || pythonResult.error) {
-          console.error(`[Segment ${segment.segment_index}] Analysis failed:`, pythonResult?.error);
+        if (!lambdaResponse.ok) {
+          const errText = await lambdaResponse.text();
+          console.error(`[Segment ${segment.segment_index}] Lambda error: ${lambdaResponse.status} - ${errText}`);
           return null;
         }
 
-        // PythonからはsummaryにVAD値が入っているので取り出す
-        const arousal = pythonResult.avg_arousal;
-        const valence = pythonResult.avg_valence;
-        const dominance = pythonResult.avg_dominance;
+        const lambdaResult = await lambdaResponse.json();
+        console.log(`[Segment ${segment.segment_index}] Lambda response:`, JSON.stringify(lambdaResult));
+
+        // PythonからはsummaryにVAD値が入っているので取り出す 
+        // -> Lambda化により、直接 {arousal, valence, dominance} が返る
+        const arousal = lambdaResult.arousal;
+        const valence = lambdaResult.valence;
+        const dominance = lambdaResult.dominance;
 
         // VAD値を詳細にログ
         console.log(`[Segment ${segment.segment_index}] VAD values - Arousal: ${arousal}, Valence: ${valence}, Dominance: ${dominance}`);
@@ -181,8 +149,8 @@ finally:
         console.log(`[Segment ${segment.segment_index}] ✓ Successfully analyzed and saved`);
 
         // クリーンアップ
-        await fs.unlink(scriptPath).catch(() => {});
-        await fs.unlink(segmentWavPath).catch(() => {});
+        // await fs.unlink(scriptPath).catch(() => {}); // Pythonスクリプトはもう作らない
+        await fs.unlink(segmentWavPath).catch(() => { });
 
         return {
           ...segment,
@@ -198,19 +166,12 @@ finally:
       }
     };
 
-    // 並列処理で全セグメントを分析（同時最大5セグメントまで）
-    console.log(`Starting parallel analysis of ${segments.length} segments (max 5 concurrent)...`);
+    // 並列処理で全セグメントを分析（完全並列化）
+    console.log(`Starting full parallel analysis of ${segments.length} segments via Lambda...`);
     const startTime = Date.now();
 
-    const CONCURRENT_LIMIT = 5;
-    const results: any[] = [];
-
-    for (let i = 0; i < segments.length; i += CONCURRENT_LIMIT) {
-      const chunk = segments.slice(i, i + CONCURRENT_LIMIT);
-      console.log(`Processing chunk ${Math.floor(i / CONCURRENT_LIMIT) + 1}: segments ${i + 1}-${Math.min(i + CONCURRENT_LIMIT, segments.length)}`);
-      const chunkResults = await Promise.all(chunk.map(segment => analyzeSegment(segment)));
-      results.push(...chunkResults);
-    }
+    // 全セグメントを同時にLambdaに投げる
+    const results = await Promise.all(segments.map(segment => analyzeSegment(segment)));
 
     const analyzedSegments = results.filter(result => result !== null);
 
@@ -218,7 +179,7 @@ finally:
     console.log(`Parallel analysis completed in ${((endTime - startTime) / 1000).toFixed(2)}s`);
 
     // 元の音声ファイルをクリーンアップ
-    await fs.unlink(tempWavPath).catch(() => {});
+    await fs.unlink(tempWavPath).catch(() => { });
 
     return NextResponse.json({
       success: true,
