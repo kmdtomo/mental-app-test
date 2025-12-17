@@ -158,7 +158,7 @@ export async function POST(request: NextRequest) {
 /**
  * システムプロンプト生成
  */
-function generateSystemPrompt(isInitialMessage: boolean, turnCount: number = 0): string {
+function generateSystemPrompt(isInitialMessage: boolean, turnCount = 0): string {
   const baseRole = `あなたは共感的なメンタルヘルスサポーターです。音声感情認識データを活用して、ユーザーの本音や感情を引き出し、ポジティブな方向への情動調整をサポートします。`;
 
   const voiceDataGuidelines = `
