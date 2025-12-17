@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { WebSidebar } from '@/components/navigation/WebSidebar';
-import { CalendarCheck, Mic, ChevronLeft, ChevronRight, Plus, BookOpen } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Mic, Loader2, Calendar as CalendarIcon, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
+import { DiaryDetailView } from '@/views/components/DiaryDetailView';
 
 interface DashboardWebPageProps {
   user: {
@@ -28,18 +29,37 @@ interface DashboardWebPageProps {
 
 export function DashboardWebPage({ user, summaries, hasTodayDiary, recordingLimit }: DashboardWebPageProps) {
   const today = new Date();
-  const [currentMonth, setCurrentMonth] = useState(today.getMonth());
-  const [currentYear, setCurrentYear] = useState(today.getFullYear());
-
-  // Create a map for quick lookup of summaries by date
-  const summariesMap = new Map(summaries.map(s => [s.date, s]));
-
-  // Today's date string
   const todayStr = today.toISOString().split('T')[0];
 
-  const formatTodayDate = () => {
-    return `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日`;
-  };
+  // State
+  const [currentMonth, setCurrentMonth] = useState(today.getMonth());
+  const [currentYear, setCurrentYear] = useState(today.getFullYear());
+  const [selectedDate, setSelectedDate] = useState<string>(todayStr);
+  const [detailData, setDetailData] = useState<any>(null);
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
+
+  // Quick lookup map and sorted dates list
+  const summariesMap = new Map(summaries.map(s => [s.date, s]));
+  const recordedDates = summaries.map(s => s.date).sort();
+
+  // Initial load: Jump to latest record if available, else today
+  useEffect(() => {
+    handleJumpToLatest();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Update current month when selected date changes (to keep strip in sync)
+  useEffect(() => {
+    const d = new Date(selectedDate);
+    if (d.getMonth() !== currentMonth || d.getFullYear() !== currentYear) {
+      setCurrentMonth(d.getMonth());
+      setCurrentYear(d.getFullYear());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate]);
+
 
   const prevMonth = () => {
     if (currentMonth === 0) {
@@ -59,221 +79,240 @@ export function DashboardWebPage({ user, summaries, hasTodayDiary, recordingLimi
     }
   };
 
-  const generateCalendarDays = () => {
-    const firstDay = new Date(currentYear, currentMonth, 1);
-    const lastDay = new Date(currentYear, currentMonth + 1, 0);
-    const startDayOfWeek = firstDay.getDay(); // 0 = Sunday
-    const daysInMonth = lastDay.getDate();
+  const jumpToMonth = (year: number, month: number) => {
+    setCurrentYear(year);
+    setCurrentMonth(month);
+    setIsMonthPickerOpen(false);
+  };
 
-    const days: Array<{ day: number; isCurrentMonth: boolean; date: string }> = [];
-
-    // Previous month filler
-    const prevMonthLastDay = new Date(currentYear, currentMonth, 0).getDate();
-    for (let i = startDayOfWeek - 1; i >= 0; i--) {
-      const day = prevMonthLastDay - i;
-      const prevMonthNum = currentMonth === 0 ? 11 : currentMonth - 1;
-      const prevYearNum = currentMonth === 0 ? currentYear - 1 : currentYear;
-      const date = `${prevYearNum}-${String(prevMonthNum + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      days.push({ day, isCurrentMonth: false, date });
+  const generateDaysForStrip = () => {
+    const date = new Date(currentYear, currentMonth, 1);
+    const days = [];
+    while (date.getMonth() === currentMonth) {
+      days.push(new Date(date));
+      date.setDate(date.getDate() + 1);
     }
-
-    // Current month
-    for (let day = 1; day <= daysInMonth; day++) {
-      const date = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      days.push({ day, isCurrentMonth: true, date });
-    }
-
-    // Next month filler
-    const totalSlots = 42; // 6 rows * 7 columns
-    const remainingDays = totalSlots - days.length;
-    for (let day = 1; day <= remainingDays; day++) {
-      const nextMonthNum = currentMonth === 11 ? 0 : currentMonth + 1;
-      const nextYearNum = currentMonth === 11 ? currentYear + 1 : currentYear;
-      const date = `${nextYearNum}-${String(nextMonthNum + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      days.push({ day, isCurrentMonth: false, date });
-    }
-
     return days;
   };
 
-  const calendarDays = generateCalendarDays();
+  const daysInMonth = generateDaysForStrip();
 
-  // Helper to truncate text
-  const truncateText = (text: string | null | undefined, maxLength: number) => {
-    if (!text) return '';
-    return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+  const handleDateClick = async (date: string) => {
+    setSelectedDate(date);
+    setIsLoadingDetail(true);
+    setDetailData(null);
+
+    if (new Date(date) > today && date !== todayStr) {
+      setIsLoadingDetail(false);
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/diary-detail?date=${date}`);
+      if (!res.ok) throw new Error('Failed to fetch');
+      const data = await res.json();
+      setDetailData(data);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsLoadingDetail(false);
+    }
+  };
+
+  const handleJumpToLatest = () => {
+    // Find latest date with recording
+    const latestDate = recordedDates.length > 0 ? recordedDates[recordedDates.length - 1] : todayStr;
+    handleDateClick(latestDate);
+  };
+
+  // derived state for navigation
+  const currentIndex = recordedDates.indexOf(selectedDate);
+  // Note: if selectedDate is NOT in recordedDates (e.g. today with no record), we need to find insertion point
+  // But strictly, hasPrevData means there is a record < selectedDate
+  const hasPrevData = recordedDates.some(d => d < selectedDate);
+  const hasNextData = recordedDates.some(d => d > selectedDate);
+
+  const handlePrevData = () => {
+    // Find closest date < selectedDate
+    // recordedDates is sorted asc
+    const prevDate = [...recordedDates].reverse().find(d => d < selectedDate);
+    if (prevDate) {
+      handleDateClick(prevDate);
+    }
+  };
+
+  const handleNextData = () => {
+    // Find closest date > selectedDate
+    const nextDate = recordedDates.find(d => d > selectedDate);
+    if (nextDate) {
+      handleDateClick(nextDate);
+    }
+  };
+
+  const getDayOfWeek = (date: Date) => {
+    const days = ['日', '月', '火', '水', '木', '金', '土'];
+    return days[date.getDay()];
   };
 
   return (
-    <div className="flex w-full h-screen font-sans bg-[#FBF7F3] text-[#3D3632]">
-      {/* Sidebar */}
+    <div className="flex w-full h-screen font-sans bg-[#FBF7F3] text-[#3D3632] overflow-hidden">
       <WebSidebar activeItem="dashboard" user={user} />
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-x-hidden overflow-y-auto">
-        <div className="max-w-7xl mx-auto px-8 py-10">
+      <main className="flex-1 flex flex-col h-full overflow-hidden relative">
 
-          {/* Header Area */}
-          <header className="flex justify-between items-end mb-10">
-            <div>
-              <h1 className="text-4xl font-bold text-[#3D3632] tracking-tight mb-2">My Diary</h1>
-              <p className="text-[#6B5F58] text-lg">日々の気持ちを振り返り、明日への活力に。</p>
-            </div>
+        {/* Header Section */}
+        <header className="px-8 py-6 flex justify-between items-center bg-[#FBF7F3] z-10 shrink-0">
+          <div>
+            <h1 className="text-2xl font-bold text-[#3D3632] tracking-tight">My Diary</h1>
+            <p className="text-[#6B5F58] text-sm">日々の記録</p>
+          </div>
 
-            <div className="flex items-center gap-6">
-              {/* Today's Usage Pill */}
-              <div className="flex items-center gap-3 bg-white/60 px-5 py-2.5 rounded-full border border-[#C17B68]/10 shadow-sm backdrop-blur-sm">
-                <div className="bg-[#C17B68]/10 p-2 rounded-full">
-                  <Mic className="text-[#C17B68]" size={18} />
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-xs text-[#6B5F58] font-medium uppercase tracking-wider">今日の録音</span>
-                  <span className="text-sm font-bold text-[#3D3632]">
-                    <span className="text-[#C17B68]">{recordingLimit.remaining}</span>
-                    <span className="text-[#6B5F58]/60 mx-1">/</span>
-                    {recordingLimit.total}回
-                  </span>
-                </div>
-              </div>
+          <div className="flex items-center gap-4">
+            <Link href="/ai-dialogue-web">
+              <button className="flex items-center gap-2 bg-[#3D3632] hover:bg-[#2A2522] text-[#FBF7F3] px-6 py-3 rounded-full transition-all shadow-md hover:shadow-lg">
+                <Plus className="w-5 h-5" />
+                <span className="font-semibold text-sm">日記を書く</span>
+              </button>
+            </Link>
+          </div>
+        </header>
 
-              <Link href="/ai-dialogue-web">
-                <button className="group flex items-center gap-3 bg-[#3D3632] hover:bg-[#2A2522] text-[#FBF7F3] px-6 py-3 rounded-full transition-all duration-300 shadow-lg hover:shadow-xl hover:-translate-y-0.5">
-                  <Plus className="w-5 h-5 transition-transform group-hover:rotate-90" />
-                  <span className="font-semibold tracking-wide">日記を書く</span>
-                </button>
-              </Link>
-            </div>
-          </header>
+        {/* Calendar Strip Section */}
+        {/* Calendar Strip Section */}
+        <div className="px-6 pb-4 bg-[#FBF7F3] shrink-0">
+          {/* Navigation Controls */}
+          <div className="flex items-center justify-between px-2 mb-4">
+            <div className="relative">
+              <button
+                onClick={() => setIsMonthPickerOpen(!isMonthPickerOpen)}
+                className="flex items-center gap-2 text-xl font-bold text-[#3D3632] hover:bg-black/5 px-2 py-1 rounded-lg transition-colors"
+              >
+                {currentYear}年 {currentMonth + 1}月
+                <ChevronDown size={20} className={`transform transition-transform ${isMonthPickerOpen ? 'rotate-180' : ''}`} />
+              </button>
 
-          {/* Calendar Container */}
-          <div className="bg-white rounded-[32px] shadow-xl shadow-[#C17B68]/5 overflow-hidden border border-[#C17B68]/5">
-
-            {/* Calendar Toolbar */}
-            <div className="flex justify-between items-center px-8 py-6 border-b border-[#F5EFE6]">
-              <div className="flex items-center gap-4">
-                <div className="bg-[#FAF6F1] p-2 rounded-2xl">
-                  <BookOpen className="text-[#C17B68]" size={24} />
-                </div>
-                <h2 className="text-2xl font-bold text-[#3D3632] tracking-tight">
-                  {currentYear}年 {currentMonth + 1}月
-                </h2>
-              </div>
-
-              <div className="flex items-center gap-2 bg-[#FAF6F1] p-1 rounded-full">
-                <button
-                  onClick={prevMonth}
-                  className="p-3 hover:bg-white rounded-full transition-all shadow-sm hover:shadow text-[#6B5F58] hover:text-[#C17B68]"
-                >
-                  <ChevronLeft size={20} strokeWidth={2.5} />
-                </button>
-                <button
-                  onClick={() => {
-                    setCurrentMonth(today.getMonth());
-                    setCurrentYear(today.getFullYear());
-                  }}
-                  className="px-4 py-2 text-sm font-bold text-[#6B5F58] hover:text-[#C17B68] transition-colors"
-                >
-                  今月
-                </button>
-                <button
-                  onClick={nextMonth}
-                  className="p-3 hover:bg-white rounded-full transition-all shadow-sm hover:shadow text-[#6B5F58] hover:text-[#C17B68]"
-                >
-                  <ChevronRight size={20} strokeWidth={2.5} />
-                </button>
-              </div>
-            </div>
-
-            {/* Calendar Grid Header */}
-            <div className="grid grid-cols-7 border-b border-[#F5EFE6] bg-[#FAF6F1]/50">
-              {['日', '月', '火', '水', '木', '金', '土'].map((day, i) => (
-                <div key={day} className={`text-center py-4 text-sm font-bold ${i === 0 ? 'text-[#C17B68]' : i === 6 ? 'text-[#5C8D89]' : 'text-[#8C837C]'}`}>
-                  {day}
-                </div>
-              ))}
-            </div>
-
-            {/* Calendar Cells */}
-            <div className="grid grid-cols-7 bg-[#F5EFE6] gap-[1px] border-b border-[#F5EFE6]">
-              {calendarDays.map((dayInfo, index) => {
-                const isToday = dayInfo.date === todayStr;
-                const summary = summariesMap.get(dayInfo.date);
-                const hasRecord = !!summary;
-
-                // Styling classes
-                const cellBgClass = !dayInfo.isCurrentMonth
-                  ? "bg-[#FAF8F5]/50 text-[#D0C9C3]"
-                  : isToday
-                    ? "bg-white relative z-10 ring-2 ring-inset ring-[#C17B68]"
-                    : "bg-white hover:bg-[#FAF8F5] transition-colors";
-
-                const dateColorClass = isToday
-                  ? "bg-[#C17B68] text-white shadow-md"
-                  : hasRecord
-                    ? "text-[#3D3632] font-semibold"
-                    : "text-[#8C837C]";
-
-                return (
-                  <div key={index} className={`relative min-h-36 p-3 group flex flex-col items-stretch ${cellBgClass}`}>
-                    {/* Date Number */}
-                    <div className="flex justify-between items-start mb-2">
-                      <span className={`flex justify-center items-center w-8 h-8 rounded-full text-sm font-medium transition-transform group-hover:scale-110 ${dateColorClass}`}>
-                        {dayInfo.day}
-                      </span>
-                      {hasRecord && (
-                        <div className="w-2 h-2 rounded-full bg-[#B8CAB0] mt-3 mr-1"></div>
-                      )}
-                    </div>
-
-                    {/* Content Preview */}
-                    {hasRecord ? (
-                      <Link href={`/diary-detail-web?date=${dayInfo.date}`} className="flex-1 block mt-1">
-                        <div className="h-full p-3 rounded-xl bg-[#FAF6F1] border border-[#E8DFD6] hover:border-[#C17B68]/30 hover:shadow-md transition-all group-hover:-translate-y-0.5">
-                          <p className="text-xs text-[#6B5F58] font-medium leading-relaxed line-clamp-3">
-                            {truncateText(summary.formatted_text, 60) || '記録あり'}
-                          </p>
-                          {summary.total_recordings > 0 && (
-                            <div className="mt-2 flex items-center justify-end gap-1">
-                              <Mic size={10} className="text-[#C17B68]" />
-                              <span className="text-[10px] text-[#C17B68] font-medium">{summary.total_recordings}</span>
-                            </div>
-                          )}
-                        </div>
-                      </Link>
-                    ) : (
-                      // Empty state for current month days can be clicked to create
-                      dayInfo.isCurrentMonth && !isToday && new Date(dayInfo.date) < today && (
-                        <div className="flex-1 flex justify-center items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                          <span className="text-[#D0C9C3] text-xs font-medium">No Entry</span>
-                        </div>
-                      )
-                    )}
-
-                    {/* Today badge if no record yet */}
-                    {isToday && !hasRecord && (
-                      <Link href="/ai-dialogue-web" className="flex-1 flex flex-col justify-center items-center mt-1 cursor-pointer rounded-xl hover:bg-[#C17B68]/5 transition-colors border-2 border-dashed border-[#C17B68]/20 hover:border-[#C17B68]">
-                        <span className="text-xs font-bold text-[#C17B68] mb-1">今日</span>
-                        <Plus className="text-[#C17B68]" size={16} />
-                      </Link>
-                    )}
+              {/* Month Picker Dropdown */}
+              {isMonthPickerOpen && (
+                <div className="absolute top-full left-0 mt-2 bg-white rounded-2xl shadow-xl border border-[#F5EBE0] p-4 z-50 w-64 grid grid-cols-3 gap-2">
+                  {Array.from({ length: 12 }).map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => jumpToMonth(currentYear, i)}
+                      className={`p-2 rounded-lg text-sm font-medium transition-colors ${i === currentMonth ? 'bg-[#C17B68] text-white' : 'hover:bg-[#FAF6F1]'}`}
+                    >
+                      {i + 1}月
+                    </button>
+                  ))}
+                  <div className="col-span-3 flex justify-between mt-2 pt-2 border-t border-[#F5EBE0]">
+                    <button onClick={() => setCurrentYear(currentYear - 1)} className="p-1 hover:bg-black/5 rounded"><ChevronLeft size={16} /></button>
+                    <span className="text-sm font-semibold">{currentYear}</span>
+                    <button onClick={() => setCurrentYear(currentYear + 1)} className="p-1 hover:bg-black/5 rounded"><ChevronRight size={16} /></button>
                   </div>
-                );
-              })}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handlePrevData}
+                disabled={!hasPrevData}
+                className={`p-2 rounded-full transition-colors ${!hasPrevData ? 'text-gray-300 cursor-not-allowed' : 'hover:bg-white text-[#6B5F58] hover:text-[#C17B68]'}`}
+              >
+                <ChevronLeft size={20} />
+              </button>
+              <button
+                onClick={handleJumpToLatest}
+                className="bg-white border border-[#E8DFD6] hover:border-[#C17B68] text-[#3D3632] px-4 py-1.5 rounded-full text-sm font-semibold transition-all shadow-sm hover:shadow"
+              >
+                最新へ
+              </button>
+              <button
+                onClick={handleNextData}
+                disabled={!hasNextData}
+                className={`p-2 rounded-full transition-colors ${!hasNextData ? 'text-gray-300 cursor-not-allowed' : 'hover:bg-white text-[#6B5F58] hover:text-[#C17B68]'}`}
+              >
+                <ChevronRight size={20} />
+              </button>
             </div>
           </div>
 
-          {/* Footer / Legend */}
-          <div className="mt-6 flex justify-end items-center gap-6 text-sm text-[#8C837C] font-medium">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#B8CAB0]"></span>
-              <span>日記あり</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#C17B68]"></span>
-              <span>今日</span>
-            </div>
-          </div>
+          {/* Strip */}
+          <div
+            ref={scrollContainerRef}
+            className="flex overflow-x-auto pb-2 pt-4 px-1 gap-2 hide-scrollbar snap-x"
+            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+          >
+            {daysInMonth.map((dateObj, i) => {
+              const dateStr = dateObj.toISOString().split('T')[0];
+              const isSelected = dateStr === selectedDate;
+              const isToday = dateStr === todayStr;
+              const hasRecord = summariesMap.has(dateStr);
 
+              return (
+                <button
+                  key={dateStr}
+                  onClick={() => handleDateClick(dateStr)}
+                  className={`flex flex-col items-center justify-center min-w-[64px] h-[90px] rounded-[24px] snap-center transition-all duration-300 border
+                        ${isSelected
+                      ? 'bg-[#3D3632] text-[#FBF7F3] border-[#3D3632] shadow-xl scale-105 transform z-10'
+                      : 'bg-white text-[#3D3632] border-transparent hover:border-[#C17B68]/30 hover:bg-[#FAF6F1]'
+                    }
+                      `}
+                >
+                  <span className={`text-[11px] font-bold mb-1.5 ${isSelected ? 'text-[#FBF7F3]/70' : 'text-[#8C837C]'}`}>
+                    {getDayOfWeek(dateObj)}
+                  </span>
+                  <span className={`text-2xl font-bold mb-1.5 ${isSelected ? 'text-white' : isToday ? 'text-[#C17B68]' : 'text-[#3D3632]'}`}>
+                    {dateObj.getDate()}
+                  </span>
+                  <div className={`w-1.5 h-1.5 rounded-full ${hasRecord ? (isSelected ? 'bg-[#B8CAB0]' : 'bg-[#B8CAB0]') : 'bg-transparent'}`}></div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Detail View Section (Full Width) */}
+        <div className="flex-1 overflow-y-auto bg-white rounded-t-[48px] shadow-[0_-8px_30px_rgba(0,0,0,0.04)] border-t border-[#F5EBE0] p-8 lg:p-12 relative">
+
+          {/* FULL WIDTH CONTAINER for content */}
+          <div className="w-full h-full">
+            {isLoadingDetail ? (
+              <div className="flex h-60 items-center justify-center">
+                <Loader2 className="w-10 h-10 text-[#C17B68] animate-spin" />
+              </div>
+            ) : selectedDate ? (
+              detailData ? (
+                <DiaryDetailView
+                  date={selectedDate}
+                  summary={detailData.summary}
+                  dialogueTurns={detailData.dialogueTurns}
+                  transcriptionSegments={detailData.transcriptionSegments}
+                  onUpdateDiary={async (date, text) => {
+                    const res = await fetch('/api/update-diary-summary', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ date, formattedText: text }),
+                    });
+                    if (!res.ok) throw new Error('Failed to update');
+                    handleDateClick(date);
+                  }}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center py-20 text-center opacity-60">
+                  <div className="w-20 h-20 rounded-full bg-[#FAF6F1] flex items-center justify-center mb-6">
+                    <CalendarIcon className="w-10 h-10 text-[#C17B68]" />
+                  </div>
+                  <p className="text-xl font-medium">この日の記録はありません</p>
+                  <p className="text-[#6B5F58] mt-2">画面右上の「日記を書く」から新しい日を始めましょう</p>
+                </div>
+              )
+            ) : (
+              <div className="flex flex-col items-center justify-center py-20 text-center opacity-60">
+                <p>日付を選択してください</p>
+              </div>
+            )}
+          </div>
         </div>
       </main>
     </div>
