@@ -1,28 +1,30 @@
 /**
  * 統一された感情ラベリングシステム
  *
- * VAD値の実測範囲: Valence, Arousal, Dominance ∈ [3.4, 4.6]
- * 中心値: 4.0
+ * VAD値の実測範囲: Valence, Arousal, Dominance ∈ [3.2, 4.2]
+ * 実測中心値: 約3.7
  *
  * 9種類のシンプルで実用的な感情ラベルを提供（怒りを追加）
+ *
+ * 2025-12-17更新: 実データの分布（3.4〜4.1に集中）に合わせて閾値を調整
  */
 
-// 実測データに基づいた閾値
+// 実測データに基づいた閾値（実データ分布: 3.2〜4.2、中央値約3.7）
 export const VAD_THRESHOLDS = {
-  // 基準値（中央）
-  CENTER: 4.0,
+  // 基準値（中央）- 実データの中央値に合わせて調整
+  CENTER: 3.7,
 
   // 中立範囲を狭く設定（中央値から±0.1）
-  NEUTRAL_MIN: 3.9,
-  NEUTRAL_MAX: 4.1,
+  NEUTRAL_MIN: 3.65,
+  NEUTRAL_MAX: 3.75,
 
   // 低い判定（下位30%程度）
-  LOW: 3.8,
-  VERY_LOW: 3.65,
+  LOW: 3.55,
+  VERY_LOW: 3.45,
 
   // 高い判定（上位30%程度）
-  HIGH: 4.2,
-  VERY_HIGH: 4.35,
+  HIGH: 3.85,
+  VERY_HIGH: 4.0,
 } as const;
 
 // 感情ラベルの型定義
@@ -50,9 +52,9 @@ export interface EmotionResult {
 /**
  * VAD値から感情ラベルを判定する統一関数
  *
- * @param arousal - 覚醒度 [3.4～4.6]（中心: 4.0）
- * @param valence - 快度 [3.4～4.6]（中心: 4.0）
- * @param dominance - 優位度 [3.4～4.6]（中心: 4.0）※補助的に使用
+ * @param arousal - 覚醒度 [3.2～4.2]（中心: 3.7）
+ * @param valence - 快度 [3.2～4.2]（中心: 3.7）
+ * @param dominance - 優位度 [3.2～4.2]（中心: 3.7）※補助的に使用
  * @returns 感情ラベルと関連情報
  */
 export function getEmotionFromVAD(
@@ -76,7 +78,7 @@ export function getEmotionFromVAD(
     };
   }
 
-  // 2. 高覚醒（A >= 4.2）
+  // 2. 高覚醒（A >= 3.85）
   if (arousal >= T.HIGH) {
     // 2-1. 高覚醒 × 高快度 = 喜び・楽しい
     if (valence >= T.HIGH) {
@@ -122,7 +124,7 @@ export function getEmotionFromVAD(
     }
   }
 
-  // 3. 低覚醒（A < 3.8）
+  // 3. 低覚醒（A < 3.55）
   if (arousal < T.LOW) {
     // 3-1. 低覚醒 × 高快度 = 穏やか・リラックス
     if (valence >= T.HIGH) {
@@ -167,7 +169,7 @@ export function getEmotionFromVAD(
     };
   }
 
-  // 4. 中程度の覚醒（3.8 <= A < 4.2）
+  // 4. 中程度の覚醒（3.55 <= A < 3.85）
   if (valence >= T.HIGH) {
     return {
       label: '落ち着き',
@@ -236,14 +238,14 @@ export const EMOTION_COLORS: Record<string, string> = {
  */
 export const EMOTION_Y_POSITION: Record<string, number> = {
   '喜び・楽しい': 0.9,
-  '穏やか・リラックス': 0.78,
-  '落ち着き': 0.65,
+  '穏やか・リラックス': 0.7,
+  '落ち着き': 0.6,
   '中立': 0.5,
-  'ストレス・緊張': 0.38,
-  '不安・心配': 0.28,
-  '悲しみ': 0.18,
-  '疲労・無気力': 0.1,
-  '怒り・イライラ': 0.05,
+  'ストレス・緊張': 0.3,
+  '不安・心配': 0.2,
+  '悲しみ': 0.1,
+  '疲労・無気力': 0.05,
+  '怒り・イライラ': 0.0,
 };
 
 /**

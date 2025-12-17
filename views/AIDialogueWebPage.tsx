@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { WebSidebar } from '@/components/navigation/WebSidebar';
-import { Mic, FileText, Activity, ChevronDown, ChevronUp, Square, Loader2, Trash2 } from 'lucide-react';
+import { Mic, FileText, Activity, ChevronDown, ChevronUp, Square, Loader2, Trash2, User, Sparkles } from 'lucide-react';
 import { EmotionChart } from '@/features/diary-detail-web/components';
 import { getTodayDialogue } from '@/features/diary-chat/actions/chatActions';
 import { useVoiceRecorder } from '@/features/voice-diary/hooks/useVoiceRecorder';
@@ -131,7 +131,7 @@ function EmotionChartToggle({ segments }: { segments: Segment[] }) {
       </button>
 
       {isExpanded && (
-        <div className="mt-2 p-4 rounded-[16px] bg-white shadow-[0_2px_8px_rgba(193,123,104,0.1)] border border-[#F5EBE0]">
+        <div className="mt-2 p-4 rounded-[16px] bg-white shadow-[0_2px_8px_rgba(193,123,104,0.1)] border border-[#F5EBE0] min-w-[300px]">
           <div className="h-[140px] w-full">
             <EmotionChart data={emotionData} compact />
           </div>
@@ -459,23 +459,43 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit,
               )}
 
               {messages.map((message, index) => (
-                <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'} mb-6`}>
-                  <div className={message.role === 'user' ? 'max-w-[85%]' : 'max-w-[80%]'}>
-                    <div className={`p-4 rounded-[16px] ${message.role === 'user' ? 'rounded-br-[4px] bg-white shadow-[0_2px_6px_rgba(193,123,104,0.12)]' : 'rounded-bl-[4px] bg-[#C17B68]/15'}`}>
-                      {message.role === 'user' && message.segments && message.segments.length > 0 ? (
-                        <ColoredTranscript segments={message.segments} />
+                <div key={index} className={`flex w-full ${message.role === 'user' ? 'justify-end' : 'justify-start'} mb-6`}>
+                  <div className={`flex max-w-[90%] md:max-w-[85%] gap-3 ${message.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                    {/* Icon */}
+                    <div className="flex-shrink-0 pt-1">
+                      {message.role === 'user' ? (
+                        user.avatarUrl ? (
+                          <img src={user.avatarUrl} alt="User" className="w-9 h-9 rounded-full object-cover shadow-sm border border-white" />
+                        ) : (
+                          <div className="w-9 h-9 rounded-full bg-[#C17B68] flex items-center justify-center shadow-sm text-white">
+                            <User size={18} />
+                          </div>
+                        )
                       ) : (
-                        <p className="text-lg text-[#3D3632]">{message.content}</p>
+                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#C17B68] to-[#A66250] flex items-center justify-center shadow-sm text-white">
+                          <Sparkles size={18} />
+                        </div>
                       )}
                     </div>
 
-                    {/* ユーザー発話の場合、感情グラフトグルを表示 */}
-                    {message.role === 'user' && message.segments && message.segments.length > 0 && (
-                      <EmotionChartToggle segments={message.segments} />
-                    )}
+                    {/* Content */}
+                    <div className="flex flex-col min-w-0">
+                      <div className={`p-4 rounded-[16px] ${message.role === 'user' ? 'rounded-tr-sm bg-white shadow-[0_2px_6px_rgba(193,123,104,0.12)] border border-[#F5EBE0]' : 'rounded-tl-sm bg-[#C17B68]/10'}`}>
+                        {message.role === 'user' && message.segments && message.segments.length > 0 ? (
+                          <ColoredTranscript segments={message.segments} />
+                        ) : (
+                          <p className="text-lg text-[#3D3632]">{message.content}</p>
+                        )}
+                      </div>
 
-                    <div className={`flex items-center gap-2 mt-2 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                      <span className="text-base text-[#9A8D85]">{formatTime(message.timestamp)}</span>
+                      {/* ユーザー発話の場合、感情グラフトグルを表示 */}
+                      {message.role === 'user' && message.segments && message.segments.length > 0 && (
+                        <EmotionChartToggle segments={message.segments} />
+                      )}
+
+                      <div className={`flex items-center gap-2 mt-1.5 px-1 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        <span className="text-xs font-medium text-[#9A8D85]">{formatTime(message.timestamp)}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -483,16 +503,30 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit,
 
               {/* ユーザー側ローディング（文字起こし・感情分析中）- 右側 */}
               {isProcessingUser && (
-                <div className="flex justify-end mb-6">
-                  <div className="max-w-[85%]">
-                    <div className="p-4 rounded-[16px] rounded-br-[4px] bg-white shadow-[0_2px_6px_rgba(193,123,104,0.12)]">
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-1">
-                          <div className="w-2 h-2 bg-[#C17B68] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                          <div className="w-2 h-2 bg-[#C17B68] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                          <div className="w-2 h-2 bg-[#C17B68] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                <div className="flex w-full justify-end mb-6">
+                  <div className="flex max-w-[90%] md:max-w-[85%] flex-row-reverse gap-3">
+                    {/* User Icon */}
+                    <div className="flex-shrink-0 pt-1">
+                      {user.avatarUrl ? (
+                        <img src={user.avatarUrl} alt="User" className="w-9 h-9 rounded-full object-cover shadow-sm border border-white" />
+                      ) : (
+                        <div className="w-9 h-9 rounded-full bg-[#C17B68] flex items-center justify-center shadow-sm text-white">
+                          <User size={18} />
                         </div>
-                        <span className="text-base text-[#6B5F58]">{userLoadingMessage}</span>
+                      )}
+                    </div>
+
+                    {/* Loading Bubble */}
+                    <div className="flex flex-col items-end min-w-0">
+                      <div className="p-4 rounded-[16px] rounded-tr-sm bg-white shadow-[0_2px_6px_rgba(193,123,104,0.12)] border border-[#F5EBE0]">
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-1">
+                            <div className="w-2 h-2 bg-[#C17B68] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                            <div className="w-2 h-2 bg-[#C17B68] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                            <div className="w-2 h-2 bg-[#C17B68] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                          </div>
+                          <span className="text-base text-[#6B5F58]">{userLoadingMessage}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -501,16 +535,26 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit,
 
               {/* AI側ローディング（応答生成中）- 左側 */}
               {isProcessingAI && (
-                <div className="flex justify-start mb-6">
-                  <div className="max-w-[80%]">
-                    <div className="p-4 rounded-[16px] rounded-bl-[4px] bg-[#C17B68]/15">
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-1">
-                          <div className="w-2 h-2 bg-[#C17B68] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                          <div className="w-2 h-2 bg-[#C17B68] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                          <div className="w-2 h-2 bg-[#C17B68] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                <div className="flex w-full justify-start mb-6">
+                  <div className="flex max-w-[90%] md:max-w-[85%] flex-row gap-3">
+                    {/* AI Icon */}
+                    <div className="flex-shrink-0 pt-1">
+                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#C17B68] to-[#A66250] flex items-center justify-center shadow-sm text-white">
+                        <Sparkles size={18} />
+                      </div>
+                    </div>
+
+                    {/* Loading Bubble */}
+                    <div className="flex flex-col items-start min-w-0">
+                      <div className="p-4 rounded-[16px] rounded-tl-sm bg-[#C17B68]/10">
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-1">
+                            <div className="w-2 h-2 bg-[#C17B68] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                            <div className="w-2 h-2 bg-[#C17B68] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                            <div className="w-2 h-2 bg-[#C17B68] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                          </div>
+                          <span className="text-base text-[#6B5F58]">AIが考えています...</span>
                         </div>
-                        <span className="text-base text-[#6B5F58]">AIが考えています...</span>
                       </div>
                     </div>
                   </div>

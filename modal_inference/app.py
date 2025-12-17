@@ -44,7 +44,7 @@ def upload_model_weights():
 # Web エンドポイント
 @app.function(
     image=image,
-    gpu="T4",  # NVIDIA T4 GPU
+    cpu=2,  # CPU only (cheaper)
     memory=4096,
     timeout=120,
     scaledown_window=300,

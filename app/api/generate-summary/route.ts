@@ -147,49 +147,64 @@ export async function POST(request: NextRequest) {
       emotionFlow
     });
 
-    const summaryPrompt = `以下の会話内容から、要点をピックアップして簡潔な日記を書いてください。
+    // 日記用：ユーザーの発言のみ抽出
+    const userOnlyContent = dialogueTurns
+      ?.filter(turn => turn.role === 'user')
+      .map(turn => turn.content)
+      .join('\n\n') || transcriptionText;
 
-【会話内容】
-${conversationForDiary || transcriptionText}
+    const summaryPrompt = `以下の発言内容から、その人が書いた日記を作成してください。
 
-【要件】
-- 出来事の記述と、その時の感情・体調の変化を含める
-- 会話の中で明らかになった気持ちの変化も反映する
-- 一人称（「私」は省略可）で自然な文章に
-- 接続詞を使って読みやすく
+【発言内容】
+${userOnlyContent}
+
+【日記のスタイル】
+- 「〜した」「〜だった」「〜と思った」のような過去形で書く
+- その日あったことと、その時どう感じたかを自然に書く
+- 堅い説明文ではなく、友達に話すような自然な文体で
+- 言っていないことは書かない
+
+【悪い例】
+「私の研究は音声感情認識と、AIとの対話による情動調整である。」← 説明文っぽい
+
+【良い例】
+「今日は研究を進めた。音声感情認識の精度がなかなか上がらなくて少し焦った。」← 日記っぽい
+
+【形式】
 - 2-3段落、150-200文字程度
-- 日付表現は不要
-- 箇条書き禁止`;
+- 日付や箇条書きは使わない`;
 
     // 感情の変化パターンを文字列化
     const emotionFlowText = emotionFlow.length > 0
       ? emotionFlow.join(' → ')
       : '感情データなし';
 
-    const insightPrompt = `以下の音声分析結果と会話内容から、今日の心の状態を伝えてください。
+    const insightPrompt = `以下の音声分析結果と会話内容から、カウンセラーとして今日の心の状態についてフィードバックしてください。
 
 【音声分析結果】
-全体的な感情: ${dominantEmotion}（最も多く検出された感情）
+全体的な感情: ${dominantEmotion}
 ${emotionFlow.length > 1 ? `感情の変化: ${emotionFlowText}` : ''}
+感情の分布: ${Object.entries(emotionCounts).map(([k, v]) => `${k}(${v}回)`).join(', ') || 'なし'}
 
 【会話内容】
 ${fullConversation || transcriptionText}
 
 【要件】
-- 会話の内容と感情の変化を踏まえて、今日の心の状態を伝える
-- 具体的な場面を引用しながら「〜という話をされていましたが、その時の声には〜が表れていました」のように記述
-- 2-3文、100-150文字程度
-- 共感的で優しい口調
-- 専門用語は使わない`;
+- 音声から読み取れた感情の特徴を、具体的な会話内容と紐づけて伝える
+- 「〜についてお話しされている時、声に力強さがありました」のように具体的に
+- 感情の揺れや変化があれば、それが何を意味しているか優しく伝える
+- ポジティブな変化や強みがあれば、積極的に取り上げる
+- 3-4文、120-180文字程度
+- 共感的で温かい口調（説教・アドバイスは禁止）`;
 
     const [summaryResponse, insightResponse] = await Promise.all([
       openai.chat.completions.create({
-        model: 'gpt-4.1-mini',
+        model: 'gpt-4o',
         messages: [{ role: 'user', content: summaryPrompt }],
         max_completion_tokens: 1000,
       }),
       openai.chat.completions.create({
-        model: 'gpt-4.1-mini',
+        model: 'gpt-4o',
         messages: [{ role: 'user', content: insightPrompt }],
         max_completion_tokens: 1000,
       })
@@ -215,10 +230,13 @@ ${fullConversation || transcriptionText}
 
     let summaryError;
     if (existingSummary) {
-      // 既存のサマリーを更新
+      // 既存のサマリーを更新（transcription_textも最新に）
       const { error } = await supabase
         .from('daily_summaries')
-        .update(summaryData)
+        .update({
+          ...summaryData,
+          transcription_text: userOnlyContent || '',
+        })
         .eq('user_id', user.id)
         .eq('date', targetDate);
       summaryError = error;
