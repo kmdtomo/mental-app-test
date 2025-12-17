@@ -36,3 +36,8 @@ next-env.d.ts
 
 .env
 .trigger
+
+# Model files (too large for git)
+*.pkl
+lambda_inference/model/
+modal_inference/model/
