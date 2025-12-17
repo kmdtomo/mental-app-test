@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { WebSidebar } from '@/components/navigation/WebSidebar';
-import { Mic, FileText, Activity, ChevronDown, ChevronUp, Square, Loader2, Trash2, User, Sparkles } from 'lucide-react';
+import { Mic, FileText, Activity, ChevronDown, ChevronUp, Square, Loader2, Trash2, User, Sparkles, X } from 'lucide-react';
+import { MobileNavBar } from '@/components/navigation/MobileNavBar';
 import { EmotionChart } from '@/features/diary-detail-web/components';
 import { getTodayDialogue } from '@/features/diary-chat/actions/chatActions';
 import { useVoiceRecorder } from '@/features/voice-diary/hooks/useVoiceRecorder';
@@ -131,7 +132,7 @@ function EmotionChartToggle({ segments }: { segments: Segment[] }) {
       </button>
 
       {isExpanded && (
-        <div className="mt-2 p-4 rounded-[16px] bg-white shadow-[0_2px_8px_rgba(193,123,104,0.1)] border border-[#F5EBE0] min-w-[300px]">
+        <div className="mt-2 p-4 rounded-[16px] bg-white shadow-[0_2px_8px_rgba(193,123,104,0.1)] border border-[#F5EBE0] w-full">
           <div className="h-[140px] w-full">
             <EmotionChart data={emotionData} compact />
           </div>
@@ -402,7 +403,8 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit,
       }
 
       // 日記詳細ページに遷移
-      router.push(`/diary-detail-web?date=${date}`);
+      // ダッシュボードの該当日のページに遷移
+      router.push(`/dashboard-web?date=${date}`);
 
     } catch (error) {
       console.error('Error generating summary:', error);
@@ -422,19 +424,21 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit,
       {/* Sidebar */}
       <WebSidebar activeItem="dialogue" user={user} />
 
+      <MobileNavBar activeItem="dialogue" />
+
       {/* Main Content */}
-      <main className="overflow-x-hidden flex bg-[#FBF7F3] h-full flex-1">
-        {/* Chat History Column - flex-1でスペースを埋め、min-w-0でshrink可能に */}
-        <div className="flex flex-col flex-1 min-w-0 py-8 pl-8 pr-4 h-full">
+      <main className="overflow-x-hidden flex flex-col md:flex-row bg-[#FBF7F3] h-full flex-1 relative">
+        {/* Chat History Column */}
+        <div className="flex flex-col flex-1 min-w-0 py-4 px-4 md:py-8 md:pl-8 md:pr-4 h-full pb-32 md:pb-8">
           {/* Page Header */}
-          <div className="mb-8">
-            <h1 className="text-4xl mb-2 font-semibold text-[#3D3632]">
+          <div className="mb-4 md:mb-8">
+            <h1 className="text-2xl md:text-4xl mb-1 md:mb-2 font-semibold text-[#3D3632]">
               {isHistoryView
                 ? `${new Date(initialDate!).toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' })}の対話`
                 : 'AIとの対話'
               }
             </h1>
-            <p className="text-lg text-[#6B5F58]">
+            <p className="text-sm md:text-lg text-[#6B5F58]">
               {isHistoryView
                 ? '過去の対話履歴を確認しています'
                 : '音声でAIと対話し、あなたの気持ちを記録します'
@@ -442,9 +446,8 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit,
             </p>
           </div>
 
-          <div className="flex flex-col grow shrink p-6 rounded-[20px] bg-white/85 shadow-[0_2px_8px_rgba(193,123,104,0.12),0_1px_3px_rgba(107,95,88,0.06)] min-h-0">
-            <h2 className="text-2xl mb-6 font-semibold text-[#3D3332]">対話履歴</h2>
-            <div className="overflow-y-auto flex-1 min-h-0 pr-4">
+          <div className="flex flex-col grow shrink p-0 md:p-6 md:rounded-[20px] md:bg-white/85 md:shadow-[0_2px_8px_rgba(193,123,104,0.12),0_1px_3px_rgba(107,95,88,0.06)] min-h-0">
+            <div className="overflow-y-auto flex-1 min-h-0 pr-1 md:pr-4">
               {messages.length === 0 && !isProcessingUser && !isProcessingAI && (
                 <div className="text-center text-[#6B5F58] py-8">
                   {isHistoryView ? (
@@ -566,8 +569,62 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit,
           </div>
         </div>
 
-        {/* Voice Recording Panel */}
-        <div className="flex flex-col w-96 py-8 pl-4 pr-8 h-full">
+        {/* Mobile Input Bar (Fixed Bottom) */}
+        {!isHistoryView && (
+          <div className="md:hidden fixed bottom-16 left-0 right-0 p-4 z-40 bg-white border-t border-[#F5EBE0] shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
+            {/* Waveform Visualization for Mobile */}
+            {(isRecording || isStarting) && (
+              <div className="absolute bottom-full left-0 right-0 h-16 bg-white/95 backdrop-blur-sm border-t border-[#F5EBE0] px-4 flex items-center justify-center">
+                <canvas ref={canvasRef} width={300} height={48} className="w-full h-full" />
+              </div>
+            )}
+
+            <div className="flex items-center gap-3">
+              {/* Generate Button (Small) */}
+              <button
+                onClick={generateSummaryAndRedirect}
+                disabled={isGeneratingSummary || messages.filter(m => m.role === 'user').length < 2}
+                className="flex flex-col items-center justify-center w-16 h-12 rounded-2xl bg-[#FBF7F3] text-[#4A7C59] border border-[#4A7C59]/30 disabled:opacity-50 disabled:border-transparent transition-all"
+              >
+                <FileText size={18} />
+                <span className="text-[10px] font-bold leading-none mt-1">日記生成</span>
+              </button>
+
+              {/* Main Recording Button Area */}
+              <div className="flex-1 flex items-center gap-3 p-2 rounded-full bg-[#F5EBE0]/50 border border-[#E8DFD6]">
+                <div className="flex-1 text-center text-sm font-medium text-[#6B5F58]">
+                  {isRecording ? (
+                    <span className="text-[#C17B68] animate-pulse">{formattedDuration}</span>
+                  ) : isProcessing ? (
+                    '処理中...'
+                  ) : (
+                    <span className="text-[#9A8D85]">タップして話す</span>
+                  )}
+                </div>
+
+                {!isRecording ? (
+                  <button
+                    onClick={startRecording}
+                    disabled={isProcessing || recordingLimit.remaining <= 0}
+                    className="flex justify-center items-center w-10 h-10 rounded-full bg-[#C17B68] shadow-md text-white disabled:opacity-50"
+                  >
+                    {isProcessing ? <Loader2 size={20} className="animate-spin" /> : <Mic size={20} />}
+                  </button>
+                ) : (
+                  <button
+                    onClick={stopRecording}
+                    className="flex justify-center items-center w-10 h-10 rounded-full bg-red-500 shadow-md text-white animate-pulse"
+                  >
+                    <Square size={16} fill="currentColor" />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Voice Recording Panel (Desktop) */}
+        <div className="hidden md:flex flex-col w-96 py-8 pl-4 pr-8 h-full">
           {/* Spacer to align with left column header */}
           <div className="mb-8">
             <div className="h-[4.5rem]"></div>

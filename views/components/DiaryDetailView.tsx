@@ -287,12 +287,12 @@ export function DiaryDetailView({
             </div>
 
             {/* Conversation Log */}
-            <div className="bg-white rounded-[32px] p-8 shadow-sm border border-[#F5EBE0]">
-                <h3 className="font-bold text-[#3D3632] mb-6 flex items-center gap-2 text-xl">
+            <div className="md:bg-white md:rounded-[32px] md:p-8 md:shadow-sm md:border md:border-[#F5EBE0]">
+                <h3 className="font-bold text-[#3D3632] mb-4 md:mb-6 flex items-center gap-2 text-xl">
                     <Mic className="text-[#C17B68]" />
                     対話履歴
                 </h3>
-                <div className="space-y-8">
+                <div className="space-y-4 md:space-y-8">
                     {dialogueTurns.map((turn, index) => {
                         const segments = turn.role === 'user' && turn.recording_id
                             ? transcriptionSegments
@@ -302,10 +302,10 @@ export function DiaryDetailView({
 
                         return (
                             <div key={index} className={`flex flex-col ${turn.role === 'user' ? 'items-end' : 'items-start'}`}>
-                                <div className={`flex items-start gap-4 max-w-[85%] md:max-w-[70%] ${turn.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                                <div className={`flex items-start gap-3 md:gap-4 max-w-[100%] md:max-w-[70%] ${turn.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
                                     {/* Avatar */}
-                                    <div className={`w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center text-white shadow-sm ring-2 ring-white ${turn.role === 'user' ? 'bg-[#C17B68]' : 'bg-gradient-to-br from-[#8C837C] to-[#6B5F58]'}`}>
-                                        {turn.role === 'user' ? <User size={18} /> : <Sparkles size={18} />}
+                                    <div className={`w-8 h-8 md:w-10 md:h-10 rounded-full flex-shrink-0 flex items-center justify-center text-white shadow-sm ring-2 ring-white ${turn.role === 'user' ? 'bg-[#C17B68]' : 'bg-gradient-to-br from-[#8C837C] to-[#6B5F58]'}`}>
+                                        {turn.role === 'user' ? <User size={16} className="md:w-[18px] md:h-[18px]" /> : <Sparkles size={16} className="md:w-[18px] md:h-[18px]" />}
                                     </div>
 
                                     {/* Bubble */}
@@ -318,10 +318,9 @@ export function DiaryDetailView({
                                             )}
                                         </div>
 
+                                        {/* ユーザー発話の場合、感情グラフトグルを表示 */}
                                         {turn.role === 'user' && segments.length > 0 && (
-                                            <div className="mt-2 flex justify-end">
-                                                <EmotionChartToggle segments={segments} />
-                                            </div>
+                                            <EmotionChartToggle segments={segments} />
                                         )}
 
                                         <span className={`text-xs text-[#9A8D85] mt-2 px-2 font-medium ${turn.role === 'user' ? 'text-right' : 'text-left'}`}>{formatTime(turn.created_at)}</span>

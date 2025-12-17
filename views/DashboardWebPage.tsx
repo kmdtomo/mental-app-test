@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { WebSidebar } from '@/components/navigation/WebSidebar';
 import { ChevronLeft, ChevronRight, Plus, Mic, Loader2, Calendar as CalendarIcon, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
 import { DiaryDetailView } from '@/views/components/DiaryDetailView';
+import { MobileNavBar } from '@/components/navigation/MobileNavBar';
 
 interface DashboardWebPageProps {
   user: {
@@ -28,6 +30,8 @@ interface DashboardWebPageProps {
 }
 
 export function DashboardWebPage({ user, summaries, hasTodayDiary, recordingLimit }: DashboardWebPageProps) {
+  const searchParams = useSearchParams();
+  const dateParam = searchParams.get('date');
   const today = new Date();
   const todayStr = today.toISOString().split('T')[0];
 
@@ -46,9 +50,13 @@ export function DashboardWebPage({ user, summaries, hasTodayDiary, recordingLimi
 
   // Initial load: Jump to latest record if available, else today
   useEffect(() => {
-    handleJumpToLatest();
+    if (dateParam) {
+      handleDateClick(dateParam);
+    } else {
+      handleJumpToLatest();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [dateParam]);
 
   // Update current month when selected date changes (to keep strip in sync)
   useEffect(() => {
@@ -155,16 +163,17 @@ export function DashboardWebPage({ user, summaries, hasTodayDiary, recordingLimi
   };
 
   return (
-    <div className="flex w-full h-screen font-sans bg-[#FBF7F3] text-[#3D3632] overflow-hidden">
+    <div className="flex flex-col md:flex-row w-full h-screen font-sans bg-[#FBF7F3] text-[#3D3632] overflow-hidden">
       <WebSidebar activeItem="dashboard" user={user} />
+      <MobileNavBar activeItem="dashboard" />
 
       <main className="flex-1 flex flex-col h-full overflow-hidden relative">
 
         {/* Header Section */}
-        <header className="px-8 py-6 flex justify-between items-center bg-[#FBF7F3] z-10 shrink-0">
+        <header className="px-4 py-4 md:px-8 md:py-6 flex justify-between items-center bg-[#FBF7F3] z-10 shrink-0">
           <div>
-            <h1 className="text-2xl font-bold text-[#3D3632] tracking-tight">My Diary</h1>
-            <p className="text-[#6B5F58] text-sm">日々の記録</p>
+            <h1 className="text-xl md:text-2xl font-bold text-[#3D3632] tracking-tight">My Diary</h1>
+            <p className="text-[#6B5F58] text-xs md:text-sm">日々の記録</p>
           </div>
 
           <div className="flex items-center gap-4">
@@ -179,13 +188,14 @@ export function DashboardWebPage({ user, summaries, hasTodayDiary, recordingLimi
 
         {/* Calendar Strip Section */}
         {/* Calendar Strip Section */}
-        <div className="px-6 pb-4 bg-[#FBF7F3] shrink-0">
+        {/* Calendar Strip Section */}
+        <div className="px-4 md:px-6 pb-2 md:pb-4 bg-[#FBF7F3] shrink-0">
           {/* Navigation Controls */}
-          <div className="flex items-center justify-between px-2 mb-4">
+          <div className="flex items-center justify-between px-1 md:px-2 mb-2 md:mb-4">
             <div className="relative">
               <button
                 onClick={() => setIsMonthPickerOpen(!isMonthPickerOpen)}
-                className="flex items-center gap-2 text-xl font-bold text-[#3D3632] hover:bg-black/5 px-2 py-1 rounded-lg transition-colors"
+                className="flex items-center gap-2 text-lg md:text-xl font-bold text-[#3D3632] hover:bg-black/5 px-2 py-1 rounded-lg transition-colors"
               >
                 {currentYear}年 {currentMonth + 1}月
                 <ChevronDown size={20} className={`transform transition-transform ${isMonthPickerOpen ? 'rotate-180' : ''}`} />
@@ -212,24 +222,24 @@ export function DashboardWebPage({ user, summaries, hasTodayDiary, recordingLimi
               )}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 md:gap-2">
               <button
                 onClick={handlePrevData}
                 disabled={!hasPrevData}
-                className={`p-2 rounded-full transition-colors ${!hasPrevData ? 'text-gray-300 cursor-not-allowed' : 'hover:bg-white text-[#6B5F58] hover:text-[#C17B68]'}`}
+                className={`p-1.5 md:p-2 rounded-full transition-colors ${!hasPrevData ? 'text-gray-300 cursor-not-allowed' : 'hover:bg-white text-[#6B5F58] hover:text-[#C17B68]'}`}
               >
                 <ChevronLeft size={20} />
               </button>
               <button
                 onClick={handleJumpToLatest}
-                className="bg-white border border-[#E8DFD6] hover:border-[#C17B68] text-[#3D3632] px-4 py-1.5 rounded-full text-sm font-semibold transition-all shadow-sm hover:shadow"
+                className="bg-white border border-[#E8DFD6] hover:border-[#C17B68] text-[#3D3632] px-3 py-1 md:px-4 md:py-1.5 rounded-full text-xs md:text-sm font-semibold transition-all shadow-sm hover:shadow"
               >
                 最新へ
               </button>
               <button
                 onClick={handleNextData}
                 disabled={!hasNextData}
-                className={`p-2 rounded-full transition-colors ${!hasNextData ? 'text-gray-300 cursor-not-allowed' : 'hover:bg-white text-[#6B5F58] hover:text-[#C17B68]'}`}
+                className={`p-1.5 md:p-2 rounded-full transition-colors ${!hasNextData ? 'text-gray-300 cursor-not-allowed' : 'hover:bg-white text-[#6B5F58] hover:text-[#C17B68]'}`}
               >
                 <ChevronRight size={20} />
               </button>
@@ -239,7 +249,7 @@ export function DashboardWebPage({ user, summaries, hasTodayDiary, recordingLimi
           {/* Strip */}
           <div
             ref={scrollContainerRef}
-            className="flex overflow-x-auto pb-2 pt-4 px-1 gap-2 hide-scrollbar snap-x"
+            className="flex overflow-x-auto pb-2 pt-2 md:pt-4 px-1 gap-2 hide-scrollbar snap-x"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
             {daysInMonth.map((dateObj, i) => {
@@ -252,20 +262,22 @@ export function DashboardWebPage({ user, summaries, hasTodayDiary, recordingLimi
                 <button
                   key={dateStr}
                   onClick={() => handleDateClick(dateStr)}
-                  className={`flex flex-col items-center justify-center min-w-[64px] h-[90px] rounded-[24px] snap-center transition-all duration-300 border
+                  className={`flex flex-col items-center justify-center min-w-[56px] h-[80px] md:min-w-[64px] md:h-[90px] rounded-[20px] md:rounded-[24px] snap-center transition-all duration-300 border
                         ${isSelected
                       ? 'bg-[#3D3632] text-[#FBF7F3] border-[#3D3632] shadow-xl scale-105 transform z-10'
-                      : 'bg-white text-[#3D3632] border-transparent hover:border-[#C17B68]/30 hover:bg-[#FAF6F1]'
+                      : hasRecord
+                        ? 'bg-[#FFF9F5] text-[#3D3632] border-[#C17B68]/40 hover:border-[#C17B68] hover:bg-[#FFF0E8] shadow-sm'
+                        : 'bg-white text-[#3D3632] border-transparent hover:border-[#C17B68]/30 hover:bg-[#FAF6F1]'
                     }
                       `}
                 >
-                  <span className={`text-[11px] font-bold mb-1.5 ${isSelected ? 'text-[#FBF7F3]/70' : 'text-[#8C837C]'}`}>
+                  <span className={`text-[10px] md:text-[11px] font-bold mb-1 md:mb-1.5 ${isSelected ? 'text-[#FBF7F3]/70' : 'text-[#8C837C]'}`}>
                     {getDayOfWeek(dateObj)}
                   </span>
-                  <span className={`text-2xl font-bold mb-1.5 ${isSelected ? 'text-white' : isToday ? 'text-[#C17B68]' : 'text-[#3D3632]'}`}>
+                  <span className={`text-xl md:text-2xl font-bold mb-1 md:mb-1.5 ${isSelected ? 'text-white' : isToday ? 'text-[#C17B68]' : 'text-[#3D3632]'}`}>
                     {dateObj.getDate()}
                   </span>
-                  <div className={`w-1.5 h-1.5 rounded-full ${hasRecord ? (isSelected ? 'bg-[#B8CAB0]' : 'bg-[#B8CAB0]') : 'bg-transparent'}`}></div>
+                  <div className={`w-1.5 h-1.5 md:w-2 md:h-2 rounded-full ${hasRecord ? (isSelected ? 'bg-[#98AF8D]' : 'bg-[#7A9E6E]') : 'bg-transparent'}`}></div>
                 </button>
               )
             })}
@@ -273,7 +285,7 @@ export function DashboardWebPage({ user, summaries, hasTodayDiary, recordingLimi
         </div>
 
         {/* Detail View Section (Full Width) */}
-        <div className="flex-1 overflow-y-auto bg-white rounded-t-[48px] shadow-[0_-8px_30px_rgba(0,0,0,0.04)] border-t border-[#F5EBE0] p-8 lg:p-12 relative">
+        <div className="flex-1 overflow-y-auto bg-white rounded-t-[32px] md:rounded-t-[48px] shadow-[0_-8px_30px_rgba(0,0,0,0.04)] border-t border-[#F5EBE0] p-4 pb-20 md:p-12 md:pb-12 relative">
 
           {/* FULL WIDTH CONTAINER for content */}
           <div className="w-full h-full">
