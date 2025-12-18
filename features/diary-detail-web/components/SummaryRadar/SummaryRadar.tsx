@@ -26,15 +26,16 @@ interface SummaryRadarProps {
 }
 
 // DBのemotion_labelからレーダーチャート用のカテゴリにマッピング
+// emotionLabeling.tsで定義された9種類の感情ラベルを5カテゴリに集約
 const EMOTION_LABEL_TO_CATEGORY: Record<string, string> = {
   '喜び・楽しい': '喜び',
   '穏やか・リラックス': '穏やかさ',
   '落ち着き': '穏やかさ',
-  'ストレス・緊張': 'ストレス',
-  '不安・心配': 'ストレス',
+  'ストレス・緊張': 'ストレス・不安',
+  '不安・心配': 'ストレス・不安',
   '怒り・イライラ': '怒り',
-  '悲しみ': '悲しみ',
-  '疲労・無気力': '悲しみ',
+  '悲しみ': '悲しみ・疲労',
+  '疲労・無気力': '悲しみ・疲労',
   '中立': '中立',
 };
 
@@ -44,9 +45,9 @@ export function SummaryRadar({ data }: SummaryRadarProps) {
     const categoryCounts: Record<string, number> = {
       '喜び': 0,
       '穏やかさ': 0,
-      'ストレス': 0,
+      'ストレス・不安': 0,
       '怒り': 0,
-      '悲しみ': 0,
+      '悲しみ・疲労': 0,
     };
 
     // 感情ラベルがあるデータのみをカウント
@@ -76,9 +77,9 @@ export function SummaryRadar({ data }: SummaryRadarProps) {
     const result = [
       { subject: '喜び', A: Math.round((categoryCounts['喜び'] / denominator) * 100), fullMark: 100 },
       { subject: '穏やかさ', A: Math.round((categoryCounts['穏やかさ'] / denominator) * 100), fullMark: 100 },
-      { subject: 'ストレス', A: Math.round((categoryCounts['ストレス'] / denominator) * 100), fullMark: 100 },
+      { subject: 'ストレス・不安', A: Math.round((categoryCounts['ストレス・不安'] / denominator) * 100), fullMark: 100 },
       { subject: '怒り', A: Math.round((categoryCounts['怒り'] / denominator) * 100), fullMark: 100 },
-      { subject: '悲しみ', A: Math.round((categoryCounts['悲しみ'] / denominator) * 100), fullMark: 100 },
+      { subject: '悲しみ・疲労', A: Math.round((categoryCounts['悲しみ・疲労'] / denominator) * 100), fullMark: 100 },
     ];
     console.log('Result stats:', result);
     return result;

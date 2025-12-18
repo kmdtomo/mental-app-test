@@ -1,9 +1,27 @@
+"use client";
+
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import { siteConfig } from "@/config/site";
 import { Heading3 } from "@/components/ui/typography";
 
 import { SigninForm } from "../features/auth/components/SigninForm/SigninForm";
 
 export const SigninPage = () => {
+  const router = useRouter();
+
+  useEffect(() => {
+    const checkSession = async () => {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        router.push("/dashboard-web");
+      }
+    };
+    checkSession();
+  }, [router]);
+
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-[#FBF7F3] p-4" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif' }}>
       <div className="w-full max-w-[400px] flex flex-col space-y-6 md:space-y-8">

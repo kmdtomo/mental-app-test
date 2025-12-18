@@ -743,8 +743,14 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit,
                 disabled={isGeneratingSummary || messages.filter(m => m.role === 'user').length < 2}
                 className="flex flex-col items-center justify-center w-16 h-12 rounded-2xl bg-[#FBF7F3] text-[#4A7C59] border border-[#4A7C59]/30 disabled:opacity-50 disabled:border-transparent transition-all"
               >
-                <FileText size={18} />
-                <span className="text-[10px] font-bold leading-none mt-1">日記生成</span>
+                {isGeneratingSummary ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <FileText size={18} />
+                )}
+                <span className="text-[10px] font-bold leading-none mt-1">
+                  {isGeneratingSummary ? '生成中' : '日記生成'}
+                </span>
               </button>
 
               {/* Main Recording Button Area */}
