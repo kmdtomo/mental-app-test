@@ -1,9 +1,10 @@
 import { createBrowserClient } from "@supabase/ssr";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 // グローバル変数を使ってHMRでもクライアントを再利用する
 const globalForSupabase = typeof window !== 'undefined'
-  ? (window as unknown as { __supabaseClient?: ReturnType<typeof createBrowserClient> })
-  : {};
+  ? (window as unknown as { __supabaseClient?: SupabaseClient })
+  : {} as { __supabaseClient?: SupabaseClient };
 
 export const createClient = () => {
   if (globalForSupabase.__supabaseClient) {

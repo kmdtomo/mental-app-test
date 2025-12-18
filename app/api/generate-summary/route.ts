@@ -182,7 +182,7 @@ ${userOnlyContent}
     const summaryResponse = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [{ role: 'user', content: summaryPrompt }],
-      max_completion_tokens: 1000,
+      max_tokens: 1000,
     });
 
     const diarySummary = summaryResponse.choices[0]?.message?.content || '';
@@ -211,7 +211,7 @@ ${fullConversation || transcriptionText}
       const insightResponse = await openai.chat.completions.create({
         model: 'gpt-4o',
         messages: [{ role: 'user', content: insightPrompt }],
-        max_completion_tokens: 1000,
+        max_tokens: 1000,
       });
 
       aiInsights = insightResponse.choices[0]?.message?.content || '';
