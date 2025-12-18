@@ -252,6 +252,14 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit,
           }
           return newMessages;
         });
+
+        // 録音回数を戻す
+        setRecordingLimit(prev => ({
+          ...prev,
+          used: Math.max(0, prev.used - 1),
+          remaining: Math.min(prev.total, prev.remaining + 1)
+        }));
+
         console.log('Last turn deleted successfully');
       } else {
         const errorData = await response.json();
@@ -720,6 +728,14 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit,
         {/* Mobile Input Bar (Fixed Bottom) */}
         {!isHistoryView && (
           <div className="md:hidden fixed bottom-16 left-0 right-0 p-4 z-40 bg-white border-t border-[#F5EBE0] shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
+            {/* Progress Bar */}
+            <div className="absolute top-0 left-0 right-0 h-1 bg-[#F5EBE0]">
+              <div
+                className="h-full bg-[#C17B68] transition-all duration-500"
+                style={{ width: `${Math.min(100, (recordingLimit.used / recordingLimit.total) * 100)}%` }}
+              />
+            </div>
+
             <div className="flex items-center gap-3">
               {/* Generate Button (Small) */}
               <button
@@ -745,7 +761,10 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit,
                   ) : isProcessing ? (
                     '処理中...'
                   ) : (
-                    <span className="text-[#9A8D85]">タップして話す</span>
+                    <div className="flex flex-col items-center justify-center leading-none">
+                      <span className="text-[#9A8D85] text-xs font-bold mb-0.5">タップして話す</span>
+                      <span className="text-[10px] text-[#C17B68] font-medium opacity-80">今日: {recordingLimit.used} / {recordingLimit.total}</span>
+                    </div>
                   )}
                 </div>
 
