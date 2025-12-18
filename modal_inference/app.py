@@ -9,7 +9,7 @@ app = modal.App("emotion-analysis")
 # カスタムイメージ定義
 image = (
     modal.Image.debian_slim(python_version="3.10")
-    .apt_install("libsndfile1")
+    .apt_install("libsndfile1", "ffmpeg")
     .pip_install(
         "torch==2.1.0",
         "transformers==4.35.0",
@@ -152,6 +152,194 @@ def analyze_emotion(request: dict) -> dict:
             "valence": float(output[1]),
             "dominance": float(output[2])
         }
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"Analysis error: {e}")
+        return {"error": str(e)}
+
+
+# セグメント一括分析エンドポイント
+@app.function(
+    image=image,
+    cpu=2,
+    memory=4096,
+    timeout=300,  # 5分（複数セグメント処理のため長めに）
+    scaledown_window=300,
+    volumes={MODEL_DIR: volume},
+)
+@modal.fastapi_endpoint(method="POST")
+def analyze_emotion_segments(request: dict) -> dict:
+    """
+    複数セグメントを一括で感情分析するエンドポイント
+    ffmpegによる音声分割もModal側で実行
+
+    Expected request body:
+        {
+            "audio_base64": "...",  # 元の音声ファイル全体
+            "segments": [
+                {"segment_index": 0, "start_time": 0.5, "end_time": 5.0, "text": "..."},
+                ...
+            ]
+        }
+
+    Returns:
+        {
+            "results": [
+                {"segment_index": 0, "arousal": float, "valence": float, "dominance": float},
+                ...
+            ]
+        }
+        or {"error": str}
+    """
+    import os
+    import subprocess
+    import tempfile
+    import torch
+    import numpy as np
+    import soundfile as sf
+    import librosa
+    from transformers import Wav2Vec2Processor, Wav2Vec2Model, Wav2Vec2Config
+
+    # CustomWav2Vec2Modelを直接定義
+    class CustomWav2Vec2Model(Wav2Vec2Model):
+        config_class = Wav2Vec2Config
+
+        def __init__(self, config):
+            super().__init__(config)
+            self.fc = torch.nn.Linear(1024, 3)
+            self.init_weights()
+
+        def forward(self, input_values):
+            output = super().forward(input_values)
+            x = torch.mean(output.last_hidden_state, dim=1)
+            x = self.fc(x)
+            return x.squeeze()
+
+    audio_base64 = request.get("audio_base64")
+    segments = request.get("segments", [])
+
+    if not audio_base64:
+        return {"error": "No audio_base64 provided"}
+
+    if not segments:
+        return {"error": "No segments provided"}
+
+    try:
+        # モデルを一度だけロード
+        BASE_MODEL = "audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim"
+        MODEL_FILE = f"{MODEL_DIR}/model_20230425_MSPPodcast.pkl"
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"Using device: {device}")
+
+        print("Loading processor...")
+        processor = Wav2Vec2Processor.from_pretrained(BASE_MODEL)
+
+        print("Loading model...")
+        model = CustomWav2Vec2Model.from_pretrained(BASE_MODEL)
+
+        if os.path.exists(MODEL_FILE):
+            print(f"Loading custom weights from {MODEL_FILE}...")
+            state_dict = torch.load(MODEL_FILE, map_location=device)
+            model.load_state_dict(state_dict)
+            print("Custom weights loaded!")
+        else:
+            print(f"Custom weights not found at {MODEL_FILE}, using base model")
+
+        model = model.to(device)
+        model.eval()
+        print("Model ready!")
+
+        # 一時ディレクトリを作成
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # 元の音声ファイルを保存
+            audio_bytes = base64.b64decode(audio_base64)
+            input_path = os.path.join(temp_dir, "input.wav")
+            with open(input_path, "wb") as f:
+                f.write(audio_bytes)
+
+            results = []
+
+            for segment in segments:
+                segment_index = segment.get("segment_index")
+                start_time = segment.get("start_time")
+                end_time = segment.get("end_time")
+                duration = end_time - start_time
+
+                print(f"[Segment {segment_index}] Processing: {start_time}s - {end_time}s (duration: {duration:.2f}s)")
+
+                # 短すぎるセグメントはスキップ
+                if duration <= 0.05:
+                    print(f"[Segment {segment_index}] Skipping: duration too short")
+                    results.append({
+                        "segment_index": segment_index,
+                        "error": "Duration too short",
+                        "skipped": True
+                    })
+                    continue
+
+                # ffmpegでセグメント切り出し
+                segment_path = os.path.join(temp_dir, f"segment_{segment_index}.wav")
+                ffmpeg_cmd = [
+                    "ffmpeg", "-i", input_path,
+                    "-ss", str(start_time),
+                    "-to", str(end_time),
+                    "-ar", "16000",
+                    "-ac", "1",
+                    "-y", segment_path
+                ]
+
+                try:
+                    subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
+                except subprocess.CalledProcessError as e:
+                    print(f"[Segment {segment_index}] FFmpeg error: {e.stderr.decode()}")
+                    results.append({
+                        "segment_index": segment_index,
+                        "error": f"FFmpeg error: {e.stderr.decode()}"
+                    })
+                    continue
+
+                # 音声読み込みと分析
+                try:
+                    audio_data, sr = sf.read(segment_path)
+
+                    # モノラル化（念のため）
+                    if len(audio_data.shape) > 1:
+                        audio_data = np.mean(audio_data, axis=1)
+
+                    # 前処理
+                    inputs = processor(
+                        audio_data,
+                        sampling_rate=16000,
+                        return_tensors="pt",
+                        padding=True
+                    )
+
+                    # 推論
+                    with torch.no_grad():
+                        input_values = inputs.input_values.to(device)
+                        output = model(input_values)
+                        output = output.cpu().numpy()
+
+                    result = {
+                        "segment_index": segment_index,
+                        "arousal": float(output[0]),
+                        "valence": float(output[1]),
+                        "dominance": float(output[2])
+                    }
+                    print(f"[Segment {segment_index}] Result: A={output[0]:.3f}, V={output[1]:.3f}, D={output[2]:.3f}")
+                    results.append(result)
+
+                except Exception as e:
+                    print(f"[Segment {segment_index}] Analysis error: {e}")
+                    results.append({
+                        "segment_index": segment_index,
+                        "error": str(e)
+                    })
+
+        return {"results": results}
 
     except Exception as e:
         import traceback
