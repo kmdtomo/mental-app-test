@@ -1,7 +1,10 @@
 'use client';
 
+type ExperimentGroup = 'intervention' | 'baseline';
+
 export async function uploadAudio(
   audioBlob: Blob,
+  experimentGroup?: ExperimentGroup,
   turnNumber: number = 1,
   dialogueId?: string
 ): Promise<{
@@ -9,10 +12,11 @@ export async function uploadAudio(
   filePath: string;
   publicUrl: string;
 }> {
-  console.log('Uploading audio:', { 
-    size: audioBlob.size, 
+  console.log('Uploading audio:', {
+    size: audioBlob.size,
     type: audioBlob.type,
-    turnNumber 
+    turnNumber,
+    experimentGroup
   });
 
   const formData = new FormData();
@@ -20,6 +24,9 @@ export async function uploadAudio(
   formData.append('turnNumber', turnNumber.toString());
   if (dialogueId) {
     formData.append('dialogueId', dialogueId);
+  }
+  if (experimentGroup) {
+    formData.append('experimentGroup', experimentGroup);
   }
 
   const response = await fetch('/api/upload-audio', {

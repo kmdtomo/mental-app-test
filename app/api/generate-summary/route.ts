@@ -159,27 +159,38 @@ export async function POST(request: NextRequest) {
 ${userOnlyContent}
 
 【日記のスタイル】
-- 「〜した」「〜だった」「〜と思った」のような過去形で書く
-- その日あったことと、その時どう感じたかを自然に書く
-- 堅い説明文ではなく、友達に話すような自然な文体で
+- 発言者の話し方や言葉遣いに合わせた文体で書く
+- 「〜した」「〜だった」「〜と思う」など、日記らしい過去形の語尾を基本とする
 - 言っていないことは書かない
 
-【悪い例】
-「私の研究は音声感情認識と、AIとの対話による情動調整である。」← 説明文っぽい
-
-【良い例】
-「今日は研究を進めた。音声感情認識の精度がなかなか上がらなくて少し焦った。」← 日記っぽい
+【例】
+「今日は仕事が忙しかった。午前中に会議があり、午後は資料作成に追われた。疲れたが、なんとか終わらせることができた。明日は少し余裕がありそうだ。」
 
 【形式】
 - 2-3段落、150-200文字程度
 - 日付や箇条書きは使わない`;
+
+    // 感情データの有無を判定（ベースラインかどうか）
+    const hasEmotionData = Object.keys(emotionCounts).length > 0;
 
     // 感情の変化パターンを文字列化
     const emotionFlowText = emotionFlow.length > 0
       ? emotionFlow.join(' → ')
       : '感情データなし';
 
-    const insightPrompt = `以下の音声分析結果と会話内容から、カウンセラーとして今日の心の状態についてフィードバックしてください。
+    // 日記要約は両群とも生成
+    const summaryResponse = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: summaryPrompt }],
+      max_completion_tokens: 1000,
+    });
+
+    const diarySummary = summaryResponse.choices[0]?.message?.content || '';
+
+    // AIインサイトは感情データがある場合のみ生成
+    let aiInsights = '';
+    if (hasEmotionData) {
+      const insightPrompt = `以下の音声分析結果と会話内容から、カウンセラーとして今日の心の状態についてフィードバックしてください。
 
 【音声分析結果】
 全体的な感情: ${dominantEmotion}
@@ -197,21 +208,17 @@ ${fullConversation || transcriptionText}
 - 3-4文、120-180文字程度
 - 共感的で温かい口調（説教・アドバイスは禁止）`;
 
-    const [summaryResponse, insightResponse] = await Promise.all([
-      openai.chat.completions.create({
-        model: 'gpt-4o',
-        messages: [{ role: 'user', content: summaryPrompt }],
-        max_completion_tokens: 1000,
-      }),
-      openai.chat.completions.create({
+      const insightResponse = await openai.chat.completions.create({
         model: 'gpt-4o',
         messages: [{ role: 'user', content: insightPrompt }],
         max_completion_tokens: 1000,
-      })
-    ]);
+      });
 
-    const diarySummary = summaryResponse.choices[0]?.message?.content || '';
-    const aiInsights = insightResponse.choices[0]?.message?.content || '';
+      aiInsights = insightResponse.choices[0]?.message?.content || '';
+    } else {
+      // ベースライン（感情分析なし）の場合のメッセージ
+      aiInsights = 'このセッションは感情分析なしモードで記録されたため、音声感情に基づくフィードバックはありません。';
+    }
 
     console.log('AI summary generated');
 

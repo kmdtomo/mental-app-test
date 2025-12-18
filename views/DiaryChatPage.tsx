@@ -5,10 +5,12 @@ import { useRouter } from 'next/navigation';
 import { ChatInterface, ChatMessage } from '@/features/diary-chat/components';
 import { UserHeader } from '@/features/voice-diary/components/UserHeader';
 import { VoiceRecorder } from '@/features/voice-diary/components/VoiceRecorder';
-import { Card } from '@/components/ui/Card';
-import { MessageCircle, ArrowLeft, FileText } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/Tabs';
+import { MessageCircle, ArrowLeft, FileText, FlaskConical, FileAudio } from 'lucide-react';
 import Link from 'next/link';
 import { getTodayDialogue } from '@/features/diary-chat/actions/chatActions';
+
+type ExperimentGroup = 'intervention' | 'baseline';
 
 // セグメントの型（Supabaseから取得）
 interface TranscriptionSegmentData {
@@ -41,6 +43,7 @@ export function DiaryChatPage({ user, recordingLimit }: DiaryChatPageProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('処理中...');
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [experimentGroup, setExperimentGroup] = useState<ExperimentGroup>('intervention');
 
   // 初回ロード時に今日の対話履歴を取得
   useEffect(() => {
@@ -55,19 +58,19 @@ export function DiaryChatPage({ user, recordingLimit }: DiaryChatPageProps) {
     }
   };
 
-  const handleRecordingComplete = async (blob: Blob, duration: number) => {
-    console.log('=== Chat Recording Complete ===');
+  // 介入群用: 感情分析あり
+  const handleRecordingCompleteIntervention = async (blob: Blob) => {
+    console.log('=== Chat Recording Complete (Intervention) ===');
 
-    // ローディング開始（文字起こし中）
     setLoadingMessage('文字起こし中...');
     setIsLoading(true);
 
     try {
       // 1. Upload to Supabase
       const { uploadAudio } = await import('@/features/voice-diary/actions/uploadAudio');
-      const uploadResult = await uploadAudio(blob);
+      const uploadResult = await uploadAudio(blob, 'intervention');
 
-      // 2. Call NEW Whisper Segmented API (句読点分割)
+      // 2. Call Whisper Segmented API (句読点分割)
       const whisperResponse = await fetch('/api/whisper-segmented', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -84,7 +87,8 @@ export function DiaryChatPage({ user, recordingLimit }: DiaryChatPageProps) {
 
       const whisperData = await whisperResponse.json();
 
-      // 3. Call NEW Emotion Analysis Segmented API (セグメント単位)
+      // 3. Call Emotion Analysis Segmented API (セグメント単位)
+      setLoadingMessage('感情分析中...');
       const emotionResponse = await fetch('/api/analyze-emotion-segmented', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -95,7 +99,9 @@ export function DiaryChatPage({ user, recordingLimit }: DiaryChatPageProps) {
         }),
       });
 
-      const emotionData = emotionResponse.ok ? await emotionResponse.json() : null;
+      if (!emotionResponse.ok) {
+        console.warn('Emotion analysis failed, continuing without emotion data');
+      }
 
       // 4. transcription_segmentsからセグメントデータを取得
       const { createClient } = await import('@/lib/supabase/client');
@@ -127,8 +133,8 @@ export function DiaryChatPage({ user, recordingLimit }: DiaryChatPageProps) {
       // 6. ユーザーメッセージをUIに追加（セグメントデータ付き）
       const userMessage: ChatMessage = {
         role: 'user',
-        content: whisperData.text, // フォールバック用
-        full_text: whisperData.text, // 句読点付き全文
+        content: whisperData.text,
+        full_text: whisperData.text,
         timestamp: new Date().toISOString(),
         segments: transcriptionSegments || undefined,
         emotionData: transcriptionSegments && transcriptionSegments.length > 0 ? {
@@ -142,13 +148,9 @@ export function DiaryChatPage({ user, recordingLimit }: DiaryChatPageProps) {
 
       setMessages(prev => [...prev, userMessage]);
 
-      // 7. AIが考え中のローディング表示を開始
-      // 注: ユーザーメッセージは既にWhisper Segmented APIがdialogue_turnsに保存済み
+      // 7. AI応答生成（感情データ付き）
       setLoadingMessage('AIが考えています...');
-      setIsLoading(true);
 
-      // 8. AI応答生成
-      console.log('Calling AI Chat API...');
       const aiResponse = await fetch('/api/ai-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -164,9 +166,7 @@ export function DiaryChatPage({ user, recordingLimit }: DiaryChatPageProps) {
       }
 
       const aiData = await aiResponse.json();
-      console.log('AI response:', aiData);
 
-      // 9. AI応答をチャットに追加（DBへの保存はAPI内で実施済み）
       const aiMessage: ChatMessage = {
         role: 'assistant',
         content: aiData.response,
@@ -175,13 +175,89 @@ export function DiaryChatPage({ user, recordingLimit }: DiaryChatPageProps) {
       setMessages(prev => [...prev, aiMessage]);
       setIsLoading(false);
 
-      // ボタンからの手動生成のみ対応
-
     } catch (error) {
-      console.error('Error processing recording:', error);
+      console.error('Error processing recording (intervention):', error);
       setIsLoading(false);
     }
   };
+
+  // 対照群用: 感情分析なし
+  const handleRecordingCompleteBaseline = async (blob: Blob) => {
+    console.log('=== Chat Recording Complete (Baseline) ===');
+
+    setLoadingMessage('文字起こし中...');
+    setIsLoading(true);
+
+    try {
+      // 1. Upload to Supabase
+      const { uploadAudio } = await import('@/features/voice-diary/actions/uploadAudio');
+      const uploadResult = await uploadAudio(blob, 'baseline');
+
+      // 2. Call Whisper Segmented API (句読点分割のみ、感情分析なし)
+      const whisperResponse = await fetch('/api/whisper-segmented', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          recordingId: uploadResult.recordingId,
+          filePath: uploadResult.filePath,
+        }),
+      });
+
+      if (!whisperResponse.ok) {
+        throw new Error('Whisper Segmented API failed');
+      }
+
+      const whisperData = await whisperResponse.json();
+
+      // 3. ユーザーメッセージをUIに追加（感情データなし）
+      const userMessage: ChatMessage = {
+        role: 'user',
+        content: whisperData.text,
+        full_text: whisperData.text,
+        timestamp: new Date().toISOString(),
+        // segments と emotionData は渡さない
+      };
+
+      setMessages(prev => [...prev, userMessage]);
+
+      // 4. AI応答生成（感情データなし、ベースライン用API）
+      setLoadingMessage('AIが考えています...');
+
+      const aiResponse = await fetch('/api/ai-chat-baseline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          userMessage: whisperData.text,
+          recordingId: uploadResult.recordingId,
+        }),
+      });
+
+      if (!aiResponse.ok) {
+        throw new Error('AI Chat Baseline API failed');
+      }
+
+      const aiData = await aiResponse.json();
+
+      const aiMessage: ChatMessage = {
+        role: 'assistant',
+        content: aiData.response,
+        timestamp: new Date().toISOString()
+      };
+      setMessages(prev => [...prev, aiMessage]);
+      setIsLoading(false);
+
+    } catch (error) {
+      console.error('Error processing recording (baseline):', error);
+      setIsLoading(false);
+    }
+  };
+
+  // 現在のモードに応じたハンドラーを返す
+  const handleRecordingComplete = experimentGroup === 'intervention'
+    ? handleRecordingCompleteIntervention
+    : handleRecordingCompleteBaseline;
 
   const generateSummaryAndRedirect = async () => {
     setIsGeneratingSummary(true);
@@ -231,22 +307,23 @@ export function DiaryChatPage({ user, recordingLimit }: DiaryChatPageProps) {
               </button>
             </Link>
 
-            <div className="glass soft-shadow rounded-[24px] p-6">
-              <div className="flex items-center justify-between">
+            <div className="glass soft-shadow rounded-[24px] p-4 sm:p-6">
+              {/* タイトル行 */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <div className="p-3 rounded-full bg-primary/10">
-                    <MessageCircle className="h-6 w-6 text-primary" />
+                  <div className="p-2 sm:p-3 rounded-full bg-primary/10">
+                    <MessageCircle className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
                   </div>
                   <div>
-                    <h1 className="text-2xl font-semibold">AIとの対話</h1>
-                    <p className="text-sm text-muted-foreground">
+                    <h1 className="text-xl sm:text-2xl font-semibold">AIとの対話</h1>
+                    <p className="text-xs sm:text-sm text-muted-foreground">
                       音声で気持ちを話してみましょう
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  {/* 要約生成ボタン */}
+                {/* 右側: ボタン類（スマホでは非表示、下部に移動） */}
+                <div className="hidden sm:flex items-center gap-3">
                   <button
                     onClick={generateSummaryAndRedirect}
                     disabled={isGeneratingSummary || messages.filter(m => m.role === 'user').length === 0}
@@ -258,7 +335,6 @@ export function DiaryChatPage({ user, recordingLimit }: DiaryChatPageProps) {
                     </span>
                   </button>
 
-                  {/* 録音回数表示 */}
                   {recordingLimit && (
                     <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-muted">
                       <span className="text-sm font-medium">
@@ -270,6 +346,57 @@ export function DiaryChatPage({ user, recordingLimit }: DiaryChatPageProps) {
                     </div>
                   )}
                 </div>
+              </div>
+
+              {/* モード切替タブ */}
+              <div className="mt-4 pt-4 border-t border-border/50">
+                <Tabs
+                  value={experimentGroup}
+                  onValueChange={(v) => setExperimentGroup(v as ExperimentGroup)}
+                  className="w-full"
+                >
+                  <TabsList className="w-full grid grid-cols-2 h-auto p-1">
+                    <TabsTrigger
+                      value="intervention"
+                      className="flex items-center justify-center gap-2 py-2 sm:py-2.5 text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                    >
+                      <FlaskConical className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                      <span>感情分析あり</span>
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="baseline"
+                      className="flex items-center justify-center gap-2 py-2 sm:py-2.5 text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                    >
+                      <FileAudio className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                      <span>感情分析なし</span>
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+
+                {/* モード説明 */}
+                <p className="mt-2 text-xs text-muted-foreground text-center">
+                  {experimentGroup === 'intervention'
+                    ? '音声から感情を分析し、AIが深掘り対話を行います'
+                    : '音声の文字起こしとシンプルな対話のみ行います'}
+                </p>
+              </div>
+
+              {/* スマホ用: ボタン類 */}
+              <div className="flex sm:hidden items-center justify-between gap-2 mt-4 pt-4 border-t border-border/50">
+                <button
+                  onClick={generateSummaryAndRedirect}
+                  disabled={isGeneratingSummary || messages.filter(m => m.role === 'user').length === 0}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-xs"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  <span>{isGeneratingSummary ? '生成中...' : '日記を生成'}</span>
+                </button>
+
+                {recordingLimit && (
+                  <div className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-muted text-xs">
+                    <span>残り{recordingLimit.remaining}回</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -303,7 +430,9 @@ export function DiaryChatPage({ user, recordingLimit }: DiaryChatPageProps) {
                     録音ボタンを押して話してください
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    文字起こしと感情分析が自動で行われます
+                    {experimentGroup === 'intervention'
+                      ? '文字起こしと感情分析が自動で行われます'
+                      : '文字起こしが自動で行われます'}
                   </p>
                 </div>
                 <VoiceRecorder

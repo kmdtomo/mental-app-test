@@ -10,6 +10,9 @@ import { getTodayDialogue } from '@/features/diary-chat/actions/chatActions';
 import { useVoiceRecorder } from '@/features/voice-diary/hooks/useVoiceRecorder';
 import { useAudioVisualizer } from '@/features/voice-diary/hooks/useAudioVisualizer';
 import { getEmotionHexColorForUI } from '@/lib/emotionLabeling';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
+
+type ExperimentGroup = 'intervention' | 'baseline';
 
 // セグメントの型
 interface Segment {
@@ -155,6 +158,28 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit,
   const [isDeleting, setIsDeleting] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recordingDurationRef = useRef(0);
+  const [experimentGroup, setExperimentGroup] = useState<ExperimentGroup>('intervention');
+  const experimentGroupRef = useRef<ExperimentGroup>('intervention');
+
+  // experimentGroupが変更されたらrefも更新
+  useEffect(() => {
+    experimentGroupRef.current = experimentGroup;
+  }, [experimentGroup]);
+
+  // 録音完了時のルーティング（experimentGroupに応じて適切なハンドラーを呼び出す）
+  const handleRecordingCompleteRouter = async (blob: Blob) => {
+    setIsProcessing(true);
+    try {
+      const durationSec = Math.ceil(recordingDurationRef.current / 1000);
+      if (experimentGroupRef.current === 'baseline') {
+        await handleRecordingCompleteBaseline(blob, durationSec);
+      } else {
+        await handleRecordingComplete(blob, durationSec);
+      }
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   // 録音フック
   const {
@@ -168,17 +193,11 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit,
     stopRecording
   } = useVoiceRecorder({
     maxDuration: 60000,
-    onRecordingComplete: async (blob) => {
-      setIsProcessing(true);
-      try {
-        await handleRecordingComplete(blob, Math.ceil(recordingDurationRef.current / 1000));
-      } finally {
-        setIsProcessing(false);
-      }
-    }
+    onRecordingComplete: handleRecordingCompleteRouter
   });
 
   const canvasRef = useAudioVisualizer(stream);
+  const mobileCanvasRef = useAudioVisualizer(stream);
 
   // 録音時間を追跡
   if (isRecording) {
@@ -385,6 +404,91 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit,
     }
   };
 
+  // ベースライン用の録音完了ハンドラー（感情分析なし）
+  const handleRecordingCompleteBaseline = async (blob: Blob, durationSec: number) => {
+    console.log('=== Chat Recording Complete (Baseline) ===');
+
+    setUserLoadingMessage('文字起こし中...');
+    setIsProcessingUser(true);
+
+    try {
+      // 1. Upload to Supabase（ベースライングループとして記録）
+      const { uploadAudio } = await import('@/features/voice-diary/actions/uploadAudio');
+      const uploadResult = await uploadAudio(blob, 'baseline');
+
+      // 2. Call Whisper Segmented API（文字起こしのみ）
+      const whisperResponse = await fetch('/api/whisper-segmented', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          recordingId: uploadResult.recordingId,
+          filePath: uploadResult.filePath,
+        }),
+      });
+
+      if (!whisperResponse.ok) {
+        throw new Error('Whisper Segmented API failed');
+      }
+
+      const whisperData = await whisperResponse.json();
+
+      // 感情分析はスキップ
+
+      // 3. ユーザーメッセージをUIに追加（感情データなし）
+      const userMessage: Message = {
+        role: 'user',
+        content: whisperData.text,
+        timestamp: new Date().toISOString(),
+        // segments, emotionData は含めない
+      };
+
+      setMessages(prev => [...prev, userMessage]);
+
+      // ユーザー側のローディング終了、AI側のローディング開始
+      setIsProcessingUser(false);
+      setIsProcessingAI(true);
+
+      // 4. ベースライン用AI応答API呼び出し
+      const aiResponse = await fetch('/api/ai-chat-baseline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          userMessage: whisperData.text,
+          recordingId: uploadResult.recordingId,
+        }),
+      });
+
+      if (!aiResponse.ok) {
+        throw new Error('AI Chat Baseline API failed');
+      }
+
+      const aiData = await aiResponse.json();
+
+      // 5. AI応答をチャットに追加
+      const aiMessage: Message = {
+        role: 'assistant',
+        content: aiData.response,
+        timestamp: new Date().toISOString()
+      };
+      setMessages(prev => [...prev, aiMessage]);
+      setIsProcessingAI(false);
+
+      // 6. 録音回数を更新
+      setRecordingLimit(prev => ({
+        ...prev,
+        used: prev.used + 1,
+        remaining: Math.max(0, prev.remaining - 1)
+      }));
+
+    } catch (error) {
+      console.error('Error processing baseline recording:', error);
+      setIsProcessingUser(false);
+      setIsProcessingAI(false);
+    }
+  };
+
   const generateSummaryAndRedirect = async () => {
     setIsGeneratingSummary(true);
 
@@ -431,7 +535,7 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit,
         {/* Chat History Column */}
         <div className="flex flex-col flex-1 min-w-0 py-4 px-4 md:py-8 md:pl-8 md:pr-4 h-full pb-32 md:pb-8">
           {/* Page Header */}
-          <div className="mb-4 md:mb-8">
+          <div className="mb-4 md:mb-8 flex flex-col items-center md:items-start text-center md:text-left">
             <h1 className="text-2xl md:text-4xl mb-1 md:mb-2 font-semibold text-[#3D3632]">
               {isHistoryView
                 ? `${new Date(initialDate!).toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' })}の対話`
@@ -444,6 +548,39 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit,
                 : '音声でAIと対話し、あなたの気持ちを記録します'
               }
             </p>
+
+            {/* モード切替タブ（履歴表示モードでない場合のみ） */}
+            {!isHistoryView && (
+              <div className="mt-3 md:mt-4 w-full md:w-auto">
+                <Tabs
+                  value={experimentGroup}
+                  onValueChange={(v) => setExperimentGroup(v as ExperimentGroup)}
+                  className="w-full"
+                >
+                  <TabsList className="inline-flex h-10 items-center justify-center md:justify-start rounded-lg bg-[#F5EBE0] p-1 text-[#6B5F58]">
+                    <TabsTrigger
+                      value="intervention"
+                      className="inline-flex items-center justify-center whitespace-nowrap rounded-md px-4 py-2 text-sm font-medium transition-all data-[state=active]:bg-white data-[state=active]:text-[#C17B68] data-[state=active]:shadow-sm"
+                    >
+                      <Activity className="w-4 h-4 mr-2" />
+                      感情分析あり
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="baseline"
+                      className="inline-flex items-center justify-center whitespace-nowrap rounded-md px-4 py-2 text-sm font-medium transition-all data-[state=active]:bg-white data-[state=active]:text-[#C17B68] data-[state=active]:shadow-sm"
+                    >
+                      <Mic className="w-4 h-4 mr-2" />
+                      感情分析なし
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+                <p className="mt-2 text-xs text-[#9A8D85] text-center md:text-left">
+                  {experimentGroup === 'intervention'
+                    ? '音声から感情を分析し、AIが深掘り対話を行います'
+                    : '音声の文字起こしとシンプルな対話のみ行います'}
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col grow shrink p-0 md:p-6 md:rounded-[20px] md:bg-white/85 md:shadow-[0_2px_8px_rgba(193,123,104,0.12),0_1px_3px_rgba(107,95,88,0.06)] min-h-0">
@@ -454,8 +591,8 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit,
                     <p className="text-lg">この日の対話履歴はありません</p>
                   ) : (
                     <>
-                      <p className="text-lg">録音ボタンを押して、今日の気持ちを話してみましょう</p>
-                      <p className="text-base mt-2">AIがあなたの本音を引き出すお手伝いをします</p>
+                      <p className="text-sm md:text-lg">録音ボタンを押して、今日の気持ちを話してみましょう</p>
+                      <p className="text-xs md:text-base mt-1 md:mt-2">AIがあなたの本音を引き出すお手伝いをします</p>
                     </>
                   )}
                 </div>
@@ -497,6 +634,17 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit,
                       )}
 
                       <div className={`flex items-center gap-2 mt-1.5 px-1 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        {/* Mobile Delete Button (Only for last user message) */}
+                        {!isHistoryView && message.role === 'user' && index === messages.map(m => m.role).lastIndexOf('user') && (
+                          <button
+                            onClick={handleDeleteLastTurn}
+                            disabled={isDeleting}
+                            className="flex items-center gap-1 text-[#6B5F58]/60 hover:text-red-500 bg-[#F5EBE0]/50 px-2 py-0.5 rounded-full transition-colors mr-1"
+                          >
+                            <Trash2 size={11} />
+                            <span className="text-[10px]">削除</span>
+                          </button>
+                        )}
                         <span className="text-xs font-medium text-[#9A8D85]">{formatTime(message.timestamp)}</span>
                       </div>
                     </div>
@@ -572,13 +720,6 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit,
         {/* Mobile Input Bar (Fixed Bottom) */}
         {!isHistoryView && (
           <div className="md:hidden fixed bottom-16 left-0 right-0 p-4 z-40 bg-white border-t border-[#F5EBE0] shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
-            {/* Waveform Visualization for Mobile */}
-            {(isRecording || isStarting) && (
-              <div className="absolute bottom-full left-0 right-0 h-16 bg-white/95 backdrop-blur-sm border-t border-[#F5EBE0] px-4 flex items-center justify-center">
-                <canvas ref={canvasRef} width={300} height={48} className="w-full h-full" />
-              </div>
-            )}
-
             <div className="flex items-center gap-3">
               {/* Generate Button (Small) */}
               <button
@@ -592,9 +733,15 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit,
 
               {/* Main Recording Button Area */}
               <div className="flex-1 flex items-center gap-3 p-2 rounded-full bg-[#F5EBE0]/50 border border-[#E8DFD6]">
-                <div className="flex-1 text-center text-sm font-medium text-[#6B5F58]">
-                  {isRecording ? (
-                    <span className="text-[#C17B68] animate-pulse">{formattedDuration}</span>
+                <div className="flex-1 h-10 flex items-center justify-center text-center text-sm font-medium text-[#6B5F58] relative overflow-hidden rounded-full">
+                  {(isRecording || isStarting) ? (
+                    <div className="absolute inset-0 w-full h-full">
+                      <canvas ref={mobileCanvasRef} width={200} height={40} className="w-full h-full" />
+                      {/* Timer Overlay */}
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <span className="text-xs font-bold text-[#C17B68] bg-white/60 px-2 py-0.5 rounded-full shadow-sm">{formattedDuration}</span>
+                      </div>
+                    </div>
                   ) : isProcessing ? (
                     '処理中...'
                   ) : (
@@ -625,9 +772,9 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit,
 
         {/* Voice Recording Panel (Desktop) */}
         <div className="hidden md:flex flex-col w-96 py-8 pl-4 pr-8 h-full">
-          {/* Spacer to align with left column header */}
+          {/* Spacer to align with left column header (including tabs) */}
           <div className="mb-8">
-            <div className="h-[4.5rem]"></div>
+            <div className="h-[10rem]"></div>
           </div>
           <div className="flex flex-col items-center p-8 rounded-[20px] bg-white/85 shadow-[0_2px_8px_rgba(193,123,104,0.12),0_1px_3px_rgba(107,95,88,0.06)]">
             <h2 className="text-2xl mb-8 font-semibold text-[#3D3632]">音声録音</h2>
@@ -715,20 +862,6 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit,
               <FileText className="text-lg" size={18} />
               <span className="text-lg whitespace-nowrap font-semibold">
                 {isGeneratingSummary ? '生成中...' : '日記を生成'}
-              </span>
-            </button>
-          </div>
-
-          {/* Delete Last Turn Button (音声分析テスト用) */}
-          <div className="mt-2">
-            <button
-              onClick={handleDeleteLastTurn}
-              disabled={isDeleting || messages.length === 0 || isHistoryView}
-              className="flex justify-center items-center gap-3 w-full py-3 px-6 rounded-full bg-red-500/80 text-white shadow-[0_2px_8px_rgba(239,68,68,0.2)] hover:bg-red-600 hover:shadow-[0_4px_12px_rgba(239,68,68,0.3)] transition-all disabled:bg-gray-300 disabled:text-white/60 disabled:cursor-not-allowed disabled:shadow-none"
-            >
-              <Trash2 className="text-lg" size={18} />
-              <span className="text-base whitespace-nowrap font-semibold">
-                {isDeleting ? '削除中...' : '最後の1ラリーを削除'}
               </span>
             </button>
           </div>
