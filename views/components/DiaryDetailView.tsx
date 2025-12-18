@@ -197,13 +197,23 @@ export function DiaryDetailView({
     const hasData = dialogueTurns.length > 0 || summary !== null;
 
     if (!hasData) {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const isToday = date === todayStr;
+
         return (
             <div className="flex flex-col items-center justify-center p-12 text-center bg-white border border-[#F5EBE0] rounded-[32px] mx-auto max-w-2xl mt-8">
                 <div className="w-20 h-20 rounded-full bg-[#FAF6F1] flex items-center justify-center mb-6">
                     <BookOpen className="w-10 h-10 text-[#C17B68]/40" />
                 </div>
                 <h3 className="text-xl font-bold text-[#3D3632] mb-2">{formatDateJP(date)}</h3>
-                <p className="text-[#6B5F58]">まだ記録がありません。</p>
+                <p className="text-[#6B5F58] mb-6">まだ記録がありません。</p>
+
+                {isToday && (
+                    <a href="/ai-dialogue-web" className="flex items-center gap-2 bg-[#3D3632] hover:bg-[#2A2522] text-[#FBF7F3] px-6 py-3 rounded-full transition-all shadow-md hover:shadow-lg">
+                        <Mic className="w-5 h-5" />
+                        <span className="font-semibold text-sm">日記を記録</span>
+                    </a>
+                )}
             </div>
         );
     }

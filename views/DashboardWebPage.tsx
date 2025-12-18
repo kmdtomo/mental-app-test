@@ -38,6 +38,8 @@ export function DashboardWebPage({ user, summaries, hasTodayDiary, recordingLimi
   // State
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
+  const [displayedMonth, setDisplayedMonth] = useState(today.getMonth());
+  const [displayedYear, setDisplayedYear] = useState(today.getFullYear());
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
   const [detailData, setDetailData] = useState<any>(null);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
@@ -53,7 +55,7 @@ export function DashboardWebPage({ user, summaries, hasTodayDiary, recordingLimi
     if (dateParam) {
       handleDateClick(dateParam);
     } else {
-      handleJumpToLatest();
+      handleDateClick(todayStr);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateParam]);
@@ -65,8 +67,44 @@ export function DashboardWebPage({ user, summaries, hasTodayDiary, recordingLimi
       setCurrentMonth(d.getMonth());
       setCurrentYear(d.getFullYear());
     }
+    // Sync displayed month/year with selected date initially or when it jumps
+    setDisplayedMonth(d.getMonth());
+    setDisplayedYear(d.getFullYear());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate]);
+
+  const handleScroll = () => {
+    if (!scrollContainerRef.current) return;
+
+    const container = scrollContainerRef.current;
+    const centerX = container.scrollLeft + container.clientWidth / 2;
+
+    // Find element closest to center
+    const elements = Array.from(container.children) as HTMLElement[];
+    let closestElement = null;
+    let minDistance = Infinity;
+
+    for (const el of elements) {
+      const elCenter = el.offsetLeft - container.offsetLeft + el.clientWidth / 2;
+      const distance = Math.abs(centerX - elCenter);
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestElement = el;
+      }
+    }
+
+    if (closestElement) {
+      const dateStr = closestElement.getAttribute('data-date');
+      if (dateStr) {
+        const d = new Date(dateStr);
+        // Optimize: only update if changed
+        if (d.getMonth() !== displayedMonth || d.getFullYear() !== displayedYear) {
+          setDisplayedMonth(d.getMonth());
+          setDisplayedYear(d.getFullYear());
+        }
+      }
+    }
+  };
 
 
   const prevMonth = () => {
@@ -94,16 +132,29 @@ export function DashboardWebPage({ user, summaries, hasTodayDiary, recordingLimi
   };
 
   const generateDaysForStrip = () => {
-    const date = new Date(currentYear, currentMonth, 1);
     const days = [];
-    while (date.getMonth() === currentMonth) {
-      days.push(new Date(date));
-      date.setDate(date.getDate() + 1);
+    const start = new Date(currentYear, currentMonth - 1, 1);
+    const end = new Date(currentYear, currentMonth + 2, 0); // Last day of next month
+
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      days.push(new Date(d));
     }
     return days;
   };
 
   const daysInMonth = generateDaysForStrip();
+
+  // Scroll to selected date
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      const el = scrollContainerRef.current.querySelector<HTMLElement>(`[data-date="${selectedDate}"]`);
+      if (el) {
+        const container = scrollContainerRef.current;
+        const scrollLeft = el.offsetLeft - (container.clientWidth / 2) + (el.clientWidth / 2);
+        container.scrollTo({ left: scrollLeft, behavior: 'smooth' });
+      }
+    }
+  }, [selectedDate, currentMonth, currentYear]);
 
   const handleDateClick = async (date: string) => {
     setSelectedDate(date);
@@ -180,7 +231,7 @@ export function DashboardWebPage({ user, summaries, hasTodayDiary, recordingLimi
             <Link href="/ai-dialogue-web">
               <button className="flex items-center gap-2 bg-[#3D3632] hover:bg-[#2A2522] text-[#FBF7F3] px-6 py-3 rounded-full transition-all shadow-md hover:shadow-lg">
                 <Plus className="w-5 h-5" />
-                <span className="font-semibold text-sm">日記を書く</span>
+                <span className="font-semibold text-sm">日記を記録</span>
               </button>
             </Link>
           </div>
@@ -197,7 +248,7 @@ export function DashboardWebPage({ user, summaries, hasTodayDiary, recordingLimi
                 onClick={() => setIsMonthPickerOpen(!isMonthPickerOpen)}
                 className="flex items-center gap-2 text-lg md:text-xl font-bold text-[#3D3632] hover:bg-black/5 px-2 py-1 rounded-lg transition-colors"
               >
-                {currentYear}年 {currentMonth + 1}月
+                {displayedYear}年 {displayedMonth + 1}月
                 <ChevronDown size={20} className={`transform transition-transform ${isMonthPickerOpen ? 'rotate-180' : ''}`} />
               </button>
 
@@ -208,7 +259,7 @@ export function DashboardWebPage({ user, summaries, hasTodayDiary, recordingLimi
                     <button
                       key={i}
                       onClick={() => jumpToMonth(currentYear, i)}
-                      className={`p-2 rounded-lg text-sm font-medium transition-colors ${i === currentMonth ? 'bg-[#C17B68] text-white' : 'hover:bg-[#FAF6F1]'}`}
+                      className={`p-2 rounded-lg text-sm font-medium transition-colors ${i === displayedMonth ? 'bg-[#C17B68] text-white' : 'hover:bg-[#FAF6F1]'}`}
                     >
                       {i + 1}月
                     </button>
@@ -249,11 +300,16 @@ export function DashboardWebPage({ user, summaries, hasTodayDiary, recordingLimi
           {/* Strip */}
           <div
             ref={scrollContainerRef}
+            onScroll={handleScroll}
             className="flex overflow-x-auto pb-2 pt-2 md:pt-4 px-1 gap-2 hide-scrollbar snap-x"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
             {daysInMonth.map((dateObj, i) => {
-              const dateStr = dateObj.toISOString().split('T')[0];
+              const year = dateObj.getFullYear();
+              const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+              const day = String(dateObj.getDate()).padStart(2, '0');
+              const dateStr = `${year}-${month}-${day}`;
+
               const isSelected = dateStr === selectedDate;
               const isToday = dateStr === todayStr;
               const hasRecord = summariesMap.has(dateStr);
@@ -261,6 +317,7 @@ export function DashboardWebPage({ user, summaries, hasTodayDiary, recordingLimi
               return (
                 <button
                   key={dateStr}
+                  data-date={dateStr}
                   onClick={() => handleDateClick(dateStr)}
                   className={`flex flex-col items-center justify-center min-w-[56px] h-[80px] md:min-w-[64px] md:h-[90px] rounded-[20px] md:rounded-[24px] snap-center transition-all duration-300 border
                         ${isSelected

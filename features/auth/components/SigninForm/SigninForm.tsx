@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useToast } from "@/components/ui/use-toast";
 
-import { SocialLoginOptions } from "../SocialLoginOptiions/SocialLoginOptions";
+
 import {
   SigninFormActionResult,
   signinWithEmailFormAction,
@@ -108,22 +108,11 @@ const FormContent = ({ formState }: FormContentProps) => {
         </Button>
       </div>
       <div>
-        <div className="relative">
-          <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t" />
-          </div>
-          <div className="relative flex justify-center text-xs uppercas my-2">
-            <span className="bg-background px-2 text-muted-foreground">
-              Or continue with
-            </span>
-          </div>
-        </div>
-        <SocialLoginOptions />
-        <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-background px-2 text-muted-foreground">
+        <div className="relative flex justify-center text-xs uppercase mt-6">
+          <span className="bg-[#FBF7F3] px-2 text-[#6B5F58]">
             {`Don't have an account yet?`}
           </span>
-          <Link href="/signup" className="text-primary">
+          <Link href="/signup" className="text-[#C17B68] font-semibold hover:underline">
             Sign Up
           </Link>
         </div>
