@@ -3,7 +3,7 @@
 export type SiteConfig = typeof siteConfig;
 
 export const siteConfig = {
-  name: "SaaS Template",
+  name: "Mental App Test",
   description:
     "A feature-rich, highly customizable AI Chatbot Template, empowered by Next.js.",
   links: {

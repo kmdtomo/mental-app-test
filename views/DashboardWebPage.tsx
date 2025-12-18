@@ -1,9 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { WebSidebar } from '@/components/navigation/WebSidebar';
-import { CalendarCheck, Mic, TrendingUp, Plus, Edit3, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Mic, Loader2, Calendar as CalendarIcon, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
+import { DiaryDetailView } from '@/views/components/DiaryDetailView';
+import { MobileNavBar } from '@/components/navigation/MobileNavBar';
 
 interface DashboardWebPageProps {
   user: {
@@ -27,22 +30,83 @@ interface DashboardWebPageProps {
 }
 
 export function DashboardWebPage({ user, summaries, hasTodayDiary, recordingLimit }: DashboardWebPageProps) {
+  const searchParams = useSearchParams();
+  const dateParam = searchParams.get('date');
   const today = new Date();
-  const [currentMonth, setCurrentMonth] = useState(today.getMonth());
-  const [currentYear, setCurrentYear] = useState(today.getFullYear());
-
-  // 記録のある日をSetで管理
-  const recordedDates = new Set(summaries.map(s => s.date));
-
-  // 今日の日付文字列
   const todayStr = today.toISOString().split('T')[0];
 
-  // 今日の日付をフォーマット
-  const formatTodayDate = () => {
-    return `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日`;
+  // State
+  const [currentMonth, setCurrentMonth] = useState(today.getMonth());
+  const [currentYear, setCurrentYear] = useState(today.getFullYear());
+  const [displayedMonth, setDisplayedMonth] = useState(today.getMonth());
+  const [displayedYear, setDisplayedYear] = useState(today.getFullYear());
+  const [selectedDate, setSelectedDate] = useState<string>(todayStr);
+  const [detailData, setDetailData] = useState<any>(null);
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
+
+  // Quick lookup map and sorted dates list
+  const summariesMap = new Map(summaries.map(s => [s.date, s]));
+  const recordedDates = summaries.map(s => s.date).sort();
+
+  // Initial load: Jump to latest record if available, else today
+  useEffect(() => {
+    if (dateParam) {
+      handleDateClick(dateParam);
+    } else {
+      handleDateClick(todayStr);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateParam]);
+
+  // Update current month when selected date changes (to keep strip in sync)
+  useEffect(() => {
+    const d = new Date(selectedDate);
+    if (d.getMonth() !== currentMonth || d.getFullYear() !== currentYear) {
+      setCurrentMonth(d.getMonth());
+      setCurrentYear(d.getFullYear());
+    }
+    // Sync displayed month/year with selected date initially or when it jumps
+    setDisplayedMonth(d.getMonth());
+    setDisplayedYear(d.getFullYear());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate]);
+
+  const handleScroll = () => {
+    if (!scrollContainerRef.current) return;
+
+    const container = scrollContainerRef.current;
+    const centerX = container.scrollLeft + container.clientWidth / 2;
+
+    // Find element closest to center
+    const elements = Array.from(container.children) as HTMLElement[];
+    let closestElement = null;
+    let minDistance = Infinity;
+
+    for (const el of elements) {
+      const elCenter = el.offsetLeft - container.offsetLeft + el.clientWidth / 2;
+      const distance = Math.abs(centerX - elCenter);
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestElement = el;
+      }
+    }
+
+    if (closestElement) {
+      const dateStr = closestElement.getAttribute('data-date');
+      if (dateStr) {
+        const d = new Date(dateStr);
+        // Optimize: only update if changed
+        if (d.getMonth() !== displayedMonth || d.getFullYear() !== displayedYear) {
+          setDisplayedMonth(d.getMonth());
+          setDisplayedYear(d.getFullYear());
+        }
+      }
+    }
   };
 
-  // 月を変更
+
   const prevMonth = () => {
     if (currentMonth === 0) {
       setCurrentMonth(11);
@@ -61,299 +125,262 @@ export function DashboardWebPage({ user, summaries, hasTodayDiary, recordingLimi
     }
   };
 
-  // カレンダーのデータを生成
-  const generateCalendarDays = () => {
-    const firstDay = new Date(currentYear, currentMonth, 1);
-    const lastDay = new Date(currentYear, currentMonth + 1, 0);
-    const startDayOfWeek = firstDay.getDay();
-    const daysInMonth = lastDay.getDate();
+  const jumpToMonth = (year: number, month: number) => {
+    setCurrentYear(year);
+    setCurrentMonth(month);
+    setIsMonthPickerOpen(false);
+  };
 
-    const days: Array<{ day: number; isCurrentMonth: boolean; date: string }> = [];
+  const generateDaysForStrip = () => {
+    const days = [];
+    const start = new Date(currentYear, currentMonth - 1, 1);
+    const end = new Date(currentYear, currentMonth + 2, 0); // Last day of next month
 
-    // 前月の日を追加
-    const prevMonthLastDay = new Date(currentYear, currentMonth, 0).getDate();
-    for (let i = startDayOfWeek - 1; i >= 0; i--) {
-      const day = prevMonthLastDay - i;
-      const prevMonthNum = currentMonth === 0 ? 11 : currentMonth - 1;
-      const prevYearNum = currentMonth === 0 ? currentYear - 1 : currentYear;
-      const date = `${prevYearNum}-${String(prevMonthNum + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      days.push({ day, isCurrentMonth: false, date });
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      days.push(new Date(d));
     }
-
-    // 当月の日を追加
-    for (let day = 1; day <= daysInMonth; day++) {
-      const date = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      days.push({ day, isCurrentMonth: true, date });
-    }
-
-    // 次月の日を追加（6行 = 42日になるまで）
-    const remainingDays = 42 - days.length;
-    for (let day = 1; day <= remainingDays; day++) {
-      const nextMonthNum = currentMonth === 11 ? 0 : currentMonth + 1;
-      const nextYearNum = currentMonth === 11 ? currentYear + 1 : currentYear;
-      const date = `${nextYearNum}-${String(nextMonthNum + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      days.push({ day, isCurrentMonth: false, date });
-    }
-
     return days;
   };
 
-  const calendarDays = generateCalendarDays();
+  const daysInMonth = generateDaysForStrip();
 
-  // 今月の統計を計算
-  const thisMonthSummaries = summaries.filter(s => {
-    const d = new Date(s.date);
-    return d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
-  });
-  const recordedDaysThisMonth = thisMonthSummaries.length;
-
-  // 連続記録日数を計算
-  const calculateStreak = () => {
-    let streak = 0;
-    const checkDate = new Date(today);
-
-    // 今日の記録がなければ昨日から開始
-    if (!recordedDates.has(todayStr)) {
-      checkDate.setDate(checkDate.getDate() - 1);
-    }
-
-    while (true) {
-      const dateStr = checkDate.toISOString().split('T')[0];
-      if (recordedDates.has(dateStr)) {
-        streak++;
-        checkDate.setDate(checkDate.getDate() - 1);
-      } else {
-        break;
+  // Scroll to selected date
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      const el = scrollContainerRef.current.querySelector<HTMLElement>(`[data-date="${selectedDate}"]`);
+      if (el) {
+        const container = scrollContainerRef.current;
+        const scrollLeft = el.offsetLeft - (container.clientWidth / 2) + (el.clientWidth / 2);
+        container.scrollTo({ left: scrollLeft, behavior: 'smooth' });
       }
     }
-    return streak;
+  }, [selectedDate, currentMonth, currentYear]);
+
+  const handleDateClick = async (date: string) => {
+    setSelectedDate(date);
+    setIsLoadingDetail(true);
+    setDetailData(null);
+
+    if (new Date(date) > today && date !== todayStr) {
+      setIsLoadingDetail(false);
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/diary-detail?date=${date}`);
+      if (!res.ok) throw new Error('Failed to fetch');
+      const data = await res.json();
+      setDetailData(data);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsLoadingDetail(false);
+    }
   };
 
-  const streak = calculateStreak();
+  const handleJumpToLatest = () => {
+    // Find latest date with recording
+    const latestDate = recordedDates.length > 0 ? recordedDates[recordedDates.length - 1] : todayStr;
+    handleDateClick(latestDate);
+  };
+
+  // derived state for navigation
+  const currentIndex = recordedDates.indexOf(selectedDate);
+  // Note: if selectedDate is NOT in recordedDates (e.g. today with no record), we need to find insertion point
+  // But strictly, hasPrevData means there is a record < selectedDate
+  const hasPrevData = recordedDates.some(d => d < selectedDate);
+  const hasNextData = recordedDates.some(d => d > selectedDate);
+
+  const handlePrevData = () => {
+    // Find closest date < selectedDate
+    // recordedDates is sorted asc
+    const prevDate = [...recordedDates].reverse().find(d => d < selectedDate);
+    if (prevDate) {
+      handleDateClick(prevDate);
+    }
+  };
+
+  const handleNextData = () => {
+    // Find closest date > selectedDate
+    const nextDate = recordedDates.find(d => d > selectedDate);
+    if (nextDate) {
+      handleDateClick(nextDate);
+    }
+  };
+
+  const getDayOfWeek = (date: Date) => {
+    const days = ['日', '月', '火', '水', '木', '金', '土'];
+    return days[date.getDay()];
+  };
 
   return (
-    <div className="flex w-full h-screen" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif' }}>
-      {/* Sidebar */}
+    <div className="flex flex-col md:flex-row w-full h-screen font-sans bg-[#FBF7F3] text-[#3D3632] overflow-hidden">
       <WebSidebar activeItem="dashboard" user={user} />
+      <MobileNavBar activeItem="dashboard" />
 
-      {/* Main Content */}
-      <main className="overflow-x-hidden overflow-y-auto grow shrink bg-[#FBF7F3] h-full">
-        <div className="py-8 px-12">
-          {/* Page Header */}
-          <div className="mb-8">
-            <h1 className="text-4xl mb-2 font-semibold text-[#3D3632]">ダッシュボード</h1>
-            <p className="text-lg text-[#6B5F58]">あなたの心の健康を記録し、振り返りましょう</p>
+      <main className="flex-1 flex flex-col h-full overflow-hidden relative">
+
+        {/* Header Section */}
+        <header className="px-4 py-4 md:px-8 md:py-6 flex justify-between items-center bg-[#FBF7F3] z-10 shrink-0">
+          <div>
+            <h1 className="text-xl md:text-2xl font-bold text-[#3D3632] tracking-tight">My Diary</h1>
+            <p className="text-[#6B5F58] text-xs md:text-sm">日々の記録</p>
           </div>
 
-          {/* Stats Cards */}
-          <div className="grid grid-cols-3 gap-8 mb-12">
-            {/* Today's Record */}
-            <div className="p-6 rounded-[20px] bg-white/85 shadow-[0_2px_8px_rgba(193,123,104,0.12),0_1px_3px_rgba(107,95,88,0.06)]">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="flex justify-center items-center w-12 h-12 rounded-full bg-[#B8CAB0]/20">
-                  <CalendarCheck className="text-xl text-[#B8CAB0]" size={20} />
-                </div>
-                <div>
-                  <h3 className="text-xl font-semibold text-[#3D3632]">今日の記録</h3>
-                  <p className="text-base text-[#6B5F58]">{formatTodayDate()}</p>
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className={`w-3 h-3 rounded-full ${recordingLimit.used > 0 ? 'bg-[#B8CAB0]' : 'bg-[#C4BCB6]'}`}></div>
-                  <span className="text-lg font-semibold text-[#3D3632]">
-                    {recordingLimit.used > 0 ? '記録済み' : '未記録'}
-                  </span>
-                </div>
-                {recordingLimit.used > 0 && (
-                  <Link href={`/diary-detail-web?date=${todayStr}`}>
-                    <button className="px-4 py-2 rounded-full bg-[#B8CAB0] text-white text-sm font-semibold hover:bg-[#A8B89F] transition-colors shadow-[0_2px_6px_rgba(184,202,176,0.3)]">
-                      詳細を見る
-                    </button>
-                  </Link>
-                )}
-              </div>
-            </div>
-
-            {/* Recording Count */}
-            <div className="p-6 rounded-[20px] bg-white/85 shadow-[0_2px_8px_rgba(193,123,104,0.12),0_1px_3px_rgba(107,95,88,0.06)]">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="flex justify-center items-center w-12 h-12 rounded-full bg-[#C17B68]/20">
-                  <Mic className="text-xl text-[#C17B68]" size={20} />
-                </div>
-                <div>
-                  <h3 className="text-xl font-semibold text-[#3D3632]">録音回数</h3>
-                  <p className="text-base text-[#6B5F58]">今日の残り</p>
-                </div>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-2xl font-semibold text-[#3D3632]">{recordingLimit.remaining}回</span>
-                <span className="text-lg text-[#6B5F58]">/ {recordingLimit.total}回</span>
-              </div>
-              <div className="mt-3">
-                <div className="h-2 rounded-full bg-[#C17B68]/15">
-                  <div
-                    className="h-full rounded-full bg-[#C17B68] shadow-[0_1px_3px_rgba(193,123,104,0.3)]"
-                    style={{ width: `${(recordingLimit.used / recordingLimit.total) * 100}%` }}
-                  ></div>
-                </div>
-              </div>
-            </div>
-
-            {/* Streak Record */}
-            <div className="p-6 rounded-[20px] bg-white/85 shadow-[0_2px_8px_rgba(193,123,104,0.12),0_1px_3px_rgba(107,95,88,0.06)]">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="flex justify-center items-center w-12 h-12 rounded-full bg-[#A8B89F]/20">
-                  <TrendingUp className="text-xl text-[#A8B89F]" size={20} />
-                </div>
-                <div>
-                  <h3 className="text-xl font-semibold text-[#3D3632]">継続記録</h3>
-                  <p className="text-base text-[#6B5F58]">連続日数</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-2xl font-semibold text-[#3D3632]">{streak}日</span>
-                <span className="text-lg text-[#6B5F58]">連続</span>
-              </div>
-            </div>
+          <div className="flex items-center gap-4">
+            <Link href="/ai-dialogue-web">
+              <button className="flex items-center gap-2 bg-[#3D3632] hover:bg-[#2A2522] text-[#FBF7F3] px-6 py-3 rounded-full transition-all shadow-md hover:shadow-lg">
+                <Plus className="w-5 h-5" />
+                <span className="font-semibold text-sm">日記を記録</span>
+              </button>
+            </Link>
           </div>
+        </header>
 
-          {/* Grid Layout */}
-          <div className="grid grid-cols-3 gap-8">
-            {/* Left Column - Calendar (2/3 width) */}
-            <div className="col-span-2">
-              <div className="p-8 rounded-[20px] bg-white/85 shadow-[0_2px_8px_rgba(193,123,104,0.12),0_1px_3px_rgba(107,95,88,0.06)]">
-                {/* Calendar Header */}
-                <div className="flex justify-between items-center mb-8">
-                  <h2 className="text-2xl font-semibold text-[#3D3632]">日記カレンダー</h2>
-                  <div className="flex items-center gap-4">
-                    <button
-                      onClick={prevMonth}
-                      className="flex justify-center items-center w-10 h-10 rounded-full bg-white/70 shadow-[0_2px_6px_rgba(193,123,104,0.12)] hover:shadow-[0_4px_10px_rgba(193,123,104,0.18)] transition-shadow"
-                    >
-                      <ChevronLeft className="text-lg text-[#6B5F58]" size={18} />
-                    </button>
-                    <span className="text-xl text-center min-w-[120px] font-semibold text-[#3D3632]">
-                      {currentYear}年{currentMonth + 1}月
-                    </span>
-                    <button
-                      onClick={nextMonth}
-                      className="flex justify-center items-center w-10 h-10 rounded-full bg-white/70 shadow-[0_2px_6px_rgba(193,123,104,0.12)] hover:shadow-[0_4px_10px_rgba(193,123,104,0.18)] transition-shadow"
-                    >
-                      <ChevronRight className="text-lg text-[#6B5F58]" size={18} />
-                    </button>
-                  </div>
-                </div>
+        {/* Calendar Strip Section */}
+        {/* Calendar Strip Section */}
+        {/* Calendar Strip Section */}
+        <div className="px-4 md:px-6 pb-2 md:pb-4 bg-[#FBF7F3] shrink-0">
+          {/* Navigation Controls */}
+          <div className="flex items-center justify-between px-1 md:px-2 mb-2 md:mb-4">
+            <div className="relative">
+              <button
+                onClick={() => setIsMonthPickerOpen(!isMonthPickerOpen)}
+                className="flex items-center gap-2 text-lg md:text-xl font-bold text-[#3D3632] hover:bg-black/5 px-2 py-1 rounded-lg transition-colors"
+              >
+                {displayedYear}年 {displayedMonth + 1}月
+                <ChevronDown size={20} className={`transform transition-transform ${isMonthPickerOpen ? 'rotate-180' : ''}`} />
+              </button>
 
-                {/* Calendar Grid */}
-                <div className="grid grid-cols-7 gap-2">
-                  {/* Day Headers */}
-                  {['日', '月', '火', '水', '木', '金', '土'].map((day) => (
-                    <div key={day} className="text-base text-center pt-3 pb-3 font-semibold text-[#6B5F58]">{day}</div>
+              {/* Month Picker Dropdown */}
+              {isMonthPickerOpen && (
+                <div className="absolute top-full left-0 mt-2 bg-white rounded-2xl shadow-xl border border-[#F5EBE0] p-4 z-50 w-64 grid grid-cols-3 gap-2">
+                  {Array.from({ length: 12 }).map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => jumpToMonth(currentYear, i)}
+                      className={`p-2 rounded-lg text-sm font-medium transition-colors ${i === displayedMonth ? 'bg-[#C17B68] text-white' : 'hover:bg-[#FAF6F1]'}`}
+                    >
+                      {i + 1}月
+                    </button>
                   ))}
-
-                  {/* Calendar Days */}
-                  {calendarDays.map((dayInfo, index) => {
-                    const isToday = dayInfo.date === todayStr;
-                    const hasRecord = recordedDates.has(dayInfo.date);
-
-                    if (!dayInfo.isCurrentMonth) {
-                      return (
-                        <div key={index} className="text-base text-center pt-3 pb-3 text-[#C4BCB6]">
-                          {dayInfo.day}
-                        </div>
-                      );
-                    }
-
-                    if (isToday) {
-                      return (
-                        <div
-                          key={index}
-                          className="text-center pt-3 pb-3 rounded-full bg-[#C17B68] text-white/85 shadow-[0_2px_8px_rgba(193,123,104,0.25)]"
-                        >
-                          <span className="text-base font-semibold">{dayInfo.day}</span>
-                        </div>
-                      );
-                    }
-
-                    if (hasRecord) {
-                      return (
-                        <Link
-                          key={index}
-                          href={`/diary-detail-web?date=${dayInfo.date}`}
-                          className="text-center relative pt-3 pb-3 rounded-full hover:bg-[#C17B68]/8 cursor-pointer block"
-                        >
-                          <span className="text-base text-[#3D3632]">{dayInfo.day}</span>
-                          <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[#B8CAB0]"></div>
-                        </Link>
-                      );
-                    }
-
-                    return (
-                      <div
-                        key={index}
-                        className="text-base text-center pt-3 pb-3 rounded-full text-[#3D3632] hover:bg-[#C17B68]/8 cursor-pointer"
-                      >
-                        {dayInfo.day}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Calendar Legend */}
-                <div className="flex justify-center items-center gap-8 mt-8 pt-6 border-t border-[#C17B68]/12">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-[#B8CAB0]"></div>
-                    <span className="text-base text-[#6B5F58]">記録済み</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-[#C17B68]"></div>
-                    <span className="text-base text-[#6B5F58]">今日</span>
+                  <div className="col-span-3 flex justify-between mt-2 pt-2 border-t border-[#F5EBE0]">
+                    <button onClick={() => setCurrentYear(currentYear - 1)} className="p-1 hover:bg-black/5 rounded"><ChevronLeft size={16} /></button>
+                    <span className="text-sm font-semibold">{currentYear}</span>
+                    <button onClick={() => setCurrentYear(currentYear + 1)} className="p-1 hover:bg-black/5 rounded"><ChevronRight size={16} /></button>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
 
-            {/* Right Column - Sidebar Cards (1/3 width) */}
-            <div className="col-span-1 flex flex-col gap-8">
-              {/* Create New Diary Card */}
-              <div className="p-8 rounded-[20px] bg-white/85 shadow-[0_2px_8px_rgba(193,123,104,0.12),0_1px_3px_rgba(107,95,88,0.06)]">
-                <div className="text-center mb-6">
-                  <div className="flex justify-center items-center w-16 h-16 mb-4 mx-auto rounded-full bg-[#C17B68]/10">
-                    <Plus className="text-2xl text-[#C17B68]" size={32} />
-                  </div>
-                  <h3 className="text-xl mb-2 font-semibold text-[#3D3632]">新しい日記を作成</h3>
-                  <p className="text-base text-[#6B5F58]">今日の気持ちを記録しましょう</p>
-                </div>
-                <Link href="/ai-dialogue-web">
-                  <button className="flex justify-center items-center gap-2 w-full py-4 px-6 rounded-full bg-[#C17B68] text-white/85 shadow-[0_2px_8px_rgba(193,123,104,0.25)] hover:shadow-[0_4px_12px_rgba(193,123,104,0.35)] transition-shadow">
-                    <Edit3 className="text-lg" size={18} />
-                    <span className="text-lg whitespace-nowrap font-semibold">日記を作成</span>
-                  </button>
-                </Link>
-              </div>
-
-              {/* Monthly Statistics */}
-              <div className="p-6 rounded-[20px] bg-white/85 shadow-[0_2px_8px_rgba(193,123,104,0.12),0_1px_3px_rgba(107,95,88,0.06)]">
-                <h3 className="text-xl mb-6 font-semibold text-[#3D3632]">今月の統計</h3>
-                <div>
-                  <div className="flex justify-between items-center mb-4">
-                    <span className="text-base text-[#6B5F58]">記録日数</span>
-                    <span className="text-lg font-semibold text-[#3D3632]">{recordedDaysThisMonth}日</span>
-                  </div>
-                  <div className="flex justify-between items-center mb-4">
-                    <span className="text-base text-[#6B5F58]">総録音回数</span>
-                    <span className="text-lg font-semibold text-[#3D3632]">
-                      {thisMonthSummaries.reduce((sum, s) => sum + (s.total_recordings || 0), 0)}回
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-base text-[#6B5F58]">連続記録</span>
-                    <span className="text-lg font-semibold text-[#3D3632]">{streak}日</span>
-                  </div>
-                </div>
-              </div>
+            <div className="flex items-center gap-1 md:gap-2">
+              <button
+                onClick={handlePrevData}
+                disabled={!hasPrevData}
+                className={`p-1.5 md:p-2 rounded-full transition-colors ${!hasPrevData ? 'text-gray-300 cursor-not-allowed' : 'hover:bg-white text-[#6B5F58] hover:text-[#C17B68]'}`}
+              >
+                <ChevronLeft size={20} />
+              </button>
+              <button
+                onClick={handleJumpToLatest}
+                className="bg-white border border-[#E8DFD6] hover:border-[#C17B68] text-[#3D3632] px-3 py-1 md:px-4 md:py-1.5 rounded-full text-xs md:text-sm font-semibold transition-all shadow-sm hover:shadow"
+              >
+                最新へ
+              </button>
+              <button
+                onClick={handleNextData}
+                disabled={!hasNextData}
+                className={`p-1.5 md:p-2 rounded-full transition-colors ${!hasNextData ? 'text-gray-300 cursor-not-allowed' : 'hover:bg-white text-[#6B5F58] hover:text-[#C17B68]'}`}
+              >
+                <ChevronRight size={20} />
+              </button>
             </div>
+          </div>
+
+          {/* Strip */}
+          <div
+            ref={scrollContainerRef}
+            onScroll={handleScroll}
+            className="flex overflow-x-auto pb-2 pt-2 md:pt-4 px-1 gap-2 hide-scrollbar snap-x"
+            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+          >
+            {daysInMonth.map((dateObj, i) => {
+              const year = dateObj.getFullYear();
+              const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+              const day = String(dateObj.getDate()).padStart(2, '0');
+              const dateStr = `${year}-${month}-${day}`;
+
+              const isSelected = dateStr === selectedDate;
+              const isToday = dateStr === todayStr;
+              const hasRecord = summariesMap.has(dateStr);
+
+              return (
+                <button
+                  key={dateStr}
+                  data-date={dateStr}
+                  onClick={() => handleDateClick(dateStr)}
+                  className={`flex flex-col items-center justify-center min-w-[56px] h-[80px] md:min-w-[64px] md:h-[90px] rounded-[20px] md:rounded-[24px] snap-center transition-all duration-300 border
+                        ${isSelected
+                      ? 'bg-[#3D3632] text-[#FBF7F3] border-[#3D3632] shadow-xl scale-105 transform z-10'
+                      : hasRecord
+                        ? 'bg-[#FFF9F5] text-[#3D3632] border-[#C17B68]/40 hover:border-[#C17B68] hover:bg-[#FFF0E8] shadow-sm'
+                        : 'bg-white text-[#3D3632] border-transparent hover:border-[#C17B68]/30 hover:bg-[#FAF6F1]'
+                    }
+                      `}
+                >
+                  <span className={`text-[10px] md:text-[11px] font-bold mb-1 md:mb-1.5 ${isSelected ? 'text-[#FBF7F3]/70' : 'text-[#8C837C]'}`}>
+                    {getDayOfWeek(dateObj)}
+                  </span>
+                  <span className={`text-xl md:text-2xl font-bold mb-1 md:mb-1.5 ${isSelected ? 'text-white' : isToday ? 'text-[#C17B68]' : 'text-[#3D3632]'}`}>
+                    {dateObj.getDate()}
+                  </span>
+                  <div className={`w-1.5 h-1.5 md:w-2 md:h-2 rounded-full ${hasRecord ? (isSelected ? 'bg-[#98AF8D]' : 'bg-[#7A9E6E]') : 'bg-transparent'}`}></div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Detail View Section (Full Width) */}
+        <div className="flex-1 overflow-y-auto bg-white rounded-t-[32px] md:rounded-t-[48px] shadow-[0_-8px_30px_rgba(0,0,0,0.04)] border-t border-[#F5EBE0] p-4 pb-20 md:p-12 md:pb-12 relative">
+
+          {/* FULL WIDTH CONTAINER for content */}
+          <div className="w-full h-full">
+            {isLoadingDetail ? (
+              <div className="flex h-60 items-center justify-center">
+                <Loader2 className="w-10 h-10 text-[#C17B68] animate-spin" />
+              </div>
+            ) : selectedDate ? (
+              detailData ? (
+                <DiaryDetailView
+                  date={selectedDate}
+                  summary={detailData.summary}
+                  dialogueTurns={detailData.dialogueTurns}
+                  transcriptionSegments={detailData.transcriptionSegments}
+                  onUpdateDiary={async (date, text) => {
+                    const res = await fetch('/api/update-diary-summary', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ date, formattedText: text }),
+                    });
+                    if (!res.ok) throw new Error('Failed to update');
+                    handleDateClick(date);
+                  }}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center py-20 text-center opacity-60">
+                  <div className="w-20 h-20 rounded-full bg-[#FAF6F1] flex items-center justify-center mb-6">
+                    <CalendarIcon className="w-10 h-10 text-[#C17B68]" />
+                  </div>
+                  <p className="text-xl font-medium">この日の記録はありません</p>
+                  <p className="text-[#6B5F58] mt-2">画面右上の「日記を書く」から新しい日を始めましょう</p>
+                </div>
+              )
+            ) : (
+              <div className="flex flex-col items-center justify-center py-20 text-center opacity-60">
+                <p>日付を選択してください</p>
+              </div>
+            )}
           </div>
         </div>
       </main>

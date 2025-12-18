@@ -36,15 +36,17 @@ export async function POST(request: NextRequest) {
     const audioFile = formData.get('audio') as File;
     const turnNumber = formData.get('turnNumber') as string || '1';
     const dialogueId = formData.get('dialogueId') as string || null;
-    
+    const experimentGroup = formData.get('experimentGroup') as string || null;
+
     if (!audioFile) {
       return NextResponse.json({ error: 'No audio file provided' }, { status: 400 });
     }
-    
+
     console.log('Audio file received:', {
       name: audioFile.name,
       size: audioFile.size,
-      type: audioFile.type
+      type: audioFile.type,
+      experimentGroup
     });
 
     // Create unique filename
@@ -78,6 +80,7 @@ export async function POST(request: NextRequest) {
         user_id: user.id,
         file_path: fileName,
         duration: 0, // Will be updated later
+        experiment_group: experimentGroup, // 'intervention' | 'baseline' | null
       })
       .select()
       .single();

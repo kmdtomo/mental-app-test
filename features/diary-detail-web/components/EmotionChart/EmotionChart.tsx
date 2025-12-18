@@ -249,7 +249,7 @@ export function EmotionChart({ data, compact = false }: EmotionChartProps) {
   // ... (existing logic)
 
   return (
-    <div ref={containerRef} className="w-full h-full pt-12 pr-6 pl-2 pb-2 relative overflow-visible font-sans">
+    <div ref={containerRef} className="w-full h-full pt-6 md:pt-12 pr-6 pl-2 pb-2 relative overflow-visible font-sans">
       {/* 縦軸ラベル - YAxisで制御するため削除 */}
 
       <ResponsiveContainer width="100%" height="100%">

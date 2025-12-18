@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: messages,
-      max_completion_tokens: 1000,
+      max_tokens: 1000,
     });
 
     const aiResponse = completion.choices[0]?.message?.content;

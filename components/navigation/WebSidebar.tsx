@@ -36,7 +36,7 @@ export function WebSidebar({ activeItem, user }: WebSidebarProps) {
   const initials = displayName.slice(0, 2).toUpperCase();
 
   return (
-    <aside className="shrink-0 min-w-fit bg-[#FAF5F0] relative">
+    <aside className="hidden md:flex shrink-0 min-w-fit bg-[#FAF5F0] relative">
       <div className="flex flex-col w-64 h-screen">
         {/* Logo */}
         <div className="p-8">
@@ -58,11 +58,10 @@ export function WebSidebar({ activeItem, user }: WebSidebarProps) {
               return (
                 <Link key={item.id} href={item.href}>
                   <div
-                    className={`flex items-center gap-3 py-3 px-4 rounded-full cursor-pointer transition-colors ${
-                      isActive
+                    className={`flex items-center gap-3 py-3 px-4 rounded-full cursor-pointer transition-colors ${isActive
                         ? 'bg-[#C17B68]/15 text-[#C17B68]'
                         : 'text-[#6B5F58] hover:bg-[#C17B68]/8'
-                    }`}
+                      }`}
                   >
                     <Icon className="text-base" size={20} />
                     <span className={`text-lg ${isActive ? 'font-semibold' : ''}`}>{item.label}</span>
