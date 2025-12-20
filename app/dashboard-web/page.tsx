@@ -26,13 +26,19 @@ export default async function Page() {
     .eq('id', user.id)
     .single();
 
-  // 過去90日分のサマリーを取得
+  // 過去90日分のサマリーを取得（感情分析の有無も含む）
   const { data: summaries } = await supabase
     .from('daily_summaries')
-    .select('date, total_recordings, formatted_text')
+    .select('date, total_recordings, formatted_text, dominant_emotion')
     .eq('user_id', user.id)
     .order('date', { ascending: false })
     .limit(90);
+
+  // 音声感情分析ありなしのフラグを追加
+  const summariesWithEmotionFlag = (summaries || []).map(s => ({
+    ...s,
+    hasEmotionAnalysis: s.dominant_emotion !== null,
+  }));
 
   // 今日の日記があるかチェック
   const today = new Date().toISOString().split('T')[0];
@@ -54,7 +60,7 @@ export default async function Page() {
   return (
     <DashboardWebPage
       user={userData}
-      summaries={summaries || []}
+      summaries={summariesWithEmotionFlag}
       hasTodayDiary={hasTodayDiary}
       recordingLimit={{
         used: usedCount,

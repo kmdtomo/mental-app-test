@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { WebSidebar } from '@/components/navigation/WebSidebar';
-import { ChevronLeft, ChevronRight, Plus, Mic, Loader2, Calendar as CalendarIcon, ChevronDown } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Mic, Loader2, Calendar as CalendarIcon, ChevronDown, Activity } from 'lucide-react';
 import Link from 'next/link';
 import { DiaryDetailView } from '@/views/components/DiaryDetailView';
 import { MobileNavBar } from '@/components/navigation/MobileNavBar';
@@ -20,6 +20,7 @@ interface DashboardWebPageProps {
     date: string;
     total_recordings: number;
     formatted_text?: string | null;
+    hasEmotionAnalysis: boolean;
   }>;
   hasTodayDiary: boolean;
   recordingLimit: {
@@ -312,7 +313,9 @@ export function DashboardWebPage({ user, summaries, hasTodayDiary, recordingLimi
 
               const isSelected = dateStr === selectedDate;
               const isToday = dateStr === todayStr;
-              const hasRecord = summariesMap.has(dateStr);
+              const summary = summariesMap.get(dateStr);
+              const hasRecord = !!summary;
+              const hasEmotionAnalysis = summary?.hasEmotionAnalysis ?? false;
 
               return (
                 <button
@@ -334,7 +337,16 @@ export function DashboardWebPage({ user, summaries, hasTodayDiary, recordingLimi
                   <span className={`text-xl md:text-2xl font-bold mb-1 md:mb-1.5 ${isSelected ? 'text-white' : isToday ? 'text-[#C17B68]' : 'text-[#3D3632]'}`}>
                     {dateObj.getDate()}
                   </span>
-                  <div className={`w-1.5 h-1.5 md:w-2 md:h-2 rounded-full ${hasRecord ? (isSelected ? 'bg-[#98AF8D]' : 'bg-[#7A9E6E]') : 'bg-transparent'}`}></div>
+                  {/* 記録インジケーター: 感情分析あり=波形アイコン、なし=ドット */}
+                  <div className="h-4 flex items-center justify-center">
+                    {hasRecord ? (
+                      hasEmotionAnalysis ? (
+                        <Activity className={`w-3.5 h-3.5 md:w-4 md:h-4 ${isSelected ? 'text-[#98AF8D]' : 'text-[#C17B68]'}`} />
+                      ) : (
+                        <div className={`w-1.5 h-1.5 md:w-2 md:h-2 rounded-full ${isSelected ? 'bg-[#98AF8D]' : 'bg-[#8C837C]'}`}></div>
+                      )
+                    ) : null}
+                  </div>
                 </button>
               )
             })}
