@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
-import { WavRecorder, formatDuration } from '@/lib/mediaRecorder/wavRecorder';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { WavRecorder, formatDuration, releaseStream } from '@/lib/mediaRecorder/wavRecorder';
 
 export interface UseVoiceRecorderOptions {
   maxDuration?: number;
@@ -16,6 +16,13 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}) {
   const [error, setError] = useState<string | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const recorderRef = useRef<WavRecorder | null>(null);
+
+  // ページ離脱時にストリームを解放
+  useEffect(() => {
+    return () => {
+      releaseStream();
+    };
+  }, []);
 
   const startRecording = useCallback(async () => {
     try {

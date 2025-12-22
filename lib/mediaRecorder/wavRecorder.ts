@@ -3,25 +3,89 @@ let register: any;
 let connect: any;
 
 let isRegistered = false;
+let initializationPromise: Promise<void> | null = null;
+
+// グローバルなストリームキャッシュ（スマホで毎回許可を求められる問題を解決）
+let cachedStream: MediaStream | null = null;
+let cachedDeviceId: string | undefined = undefined;
 
 export async function initializeWavRecorder() {
+  // 既に初期化中の場合は、その Promise を返す（重複初期化を防ぐ）
+  if (initializationPromise) {
+    return initializationPromise;
+  }
+
   if (!isRegistered && typeof window !== 'undefined') {
-    try {
-      // Dynamic import to avoid SSR issues
-      const extendableModule = await import('extendable-media-recorder');
-      const encoderModule = await import('extendable-media-recorder-wav-encoder');
-      
-      ExtendableMediaRecorder = extendableModule.MediaRecorder;
-      register = extendableModule.register;
-      connect = encoderModule.connect;
-      
-      await register(await connect());
-      isRegistered = true;
-      console.log('✅ WAV encoder initialized successfully');
-    } catch (error) {
-      console.error('❌ Failed to initialize WAV recorder:', error);
-      // Fallback: Use default MediaRecorder
+    initializationPromise = (async () => {
+      try {
+        // Dynamic import to avoid SSR issues
+        const extendableModule = await import('extendable-media-recorder');
+        const encoderModule = await import('extendable-media-recorder-wav-encoder');
+
+        ExtendableMediaRecorder = extendableModule.MediaRecorder;
+        register = extendableModule.register;
+        connect = encoderModule.connect;
+
+        await register(await connect());
+        isRegistered = true;
+        console.log('✅ WAV encoder initialized successfully');
+      } catch (error) {
+        console.error('❌ Failed to initialize WAV recorder:', error);
+        initializationPromise = null;
+        throw error;
+      }
+    })();
+
+    return initializationPromise;
+  }
+}
+
+// ページ読み込み時に事前初期化（録音ボタンを押す前に完了させる）
+if (typeof window !== 'undefined') {
+  // 少し遅延させてページ読み込みをブロックしない
+  setTimeout(() => {
+    initializeWavRecorder().catch(console.error);
+  }, 100);
+}
+
+// キャッシュされたストリームを取得または新規作成
+async function getOrCreateStream(preferredDeviceId?: string): Promise<MediaStream> {
+  // キャッシュされたストリームが有効かチェック
+  if (cachedStream && cachedDeviceId === preferredDeviceId) {
+    const tracks = cachedStream.getAudioTracks();
+    if (tracks.length > 0 && tracks[0].readyState === 'live') {
+      console.log('♻️ Reusing cached audio stream');
+      return cachedStream;
     }
+  }
+
+  // 新しいストリームを取得
+  console.log('🎤 Getting new audio stream...');
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      deviceId: preferredDeviceId ? { exact: preferredDeviceId } : undefined,
+      channelCount: 1,
+      sampleRate: 44100,
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true
+    }
+  });
+
+  // キャッシュを更新
+  cachedStream = stream;
+  cachedDeviceId = preferredDeviceId;
+
+  return stream;
+}
+
+// ストリームを解放（ページ離脱時などに呼ぶ）
+export function releaseStream() {
+  if (cachedStream) {
+    cachedStream.getTracks().forEach(track => track.stop());
+    cachedStream = null;
+    cachedDeviceId = undefined;
+    console.log('🔇 Audio stream released');
   }
 }
 
@@ -47,47 +111,48 @@ export class WavRecorder {
     try {
       console.log('🎙️ WavRecorder: Starting recording...');
 
-      // Initialize WAV encoder
+      // Initialize WAV encoder (待機して確実に完了させる)
       await initializeWavRecorder();
 
-      // Get microphone access
+      // Get microphone access (キャッシュされたストリームを再利用)
       console.log('🎤 WavRecorder: Requesting microphone access...');
 
-      // Enumerate devices to find built-in microphone (exclude iPhone Continuity)
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const audioInputs = devices.filter(device => device.kind === 'audioinput');
+      // デバイス列挙は初回のみ（ラベルが取得できる場合のみ意味がある）
+      let preferredDeviceId: string | undefined = undefined;
 
-      console.log('🎤 Available audio inputs:', audioInputs.map(d => ({
-        deviceId: d.deviceId,
-        label: d.label,
-        groupId: d.groupId
-      })));
+      // 既にキャッシュされたストリームがある場合はデバイス列挙をスキップ
+      if (!cachedStream) {
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const audioInputs = devices.filter(device => device.kind === 'audioinput');
 
-      // Filter out iPhone Continuity microphone
-      // Continuity devices typically have "iPhone" in the label
-      const builtInMic = audioInputs.find(device =>
-        !device.label.toLowerCase().includes('iphone') &&
-        !device.label.toLowerCase().includes('continuity')
-      );
+          console.log('🎤 Available audio inputs:', audioInputs.map(d => ({
+            deviceId: d.deviceId,
+            label: d.label,
+            groupId: d.groupId
+          })));
 
-      const deviceId = builtInMic?.deviceId;
+          // Filter out iPhone Continuity microphone
+          const builtInMic = audioInputs.find(device =>
+            device.label && // ラベルがある場合のみフィルタ
+            !device.label.toLowerCase().includes('iphone') &&
+            !device.label.toLowerCase().includes('continuity')
+          );
 
-      if (deviceId) {
-        console.log('🎤 Using device:', builtInMic?.label || 'Default');
-      } else {
-        console.log('🎤 No built-in mic found, using default');
+          preferredDeviceId = builtInMic?.deviceId;
+
+          if (preferredDeviceId) {
+            console.log('🎤 Using device:', builtInMic?.label || 'Default');
+          } else {
+            console.log('🎤 No built-in mic found, using default');
+          }
+        } catch (enumError) {
+          console.warn('⚠️ Device enumeration failed, using default:', enumError);
+        }
       }
 
-      this.stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          deviceId: deviceId ? { exact: deviceId } : undefined,
-          channelCount: 1,
-          sampleRate: 44100, // CD品質（高品質録音）
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        }
-      });
+      // キャッシュされたストリームを取得または新規作成
+      this.stream = await getOrCreateStream(preferredDeviceId);
       console.log('✅ WavRecorder: Microphone access granted');
       
       // Notify that stream is ready
@@ -196,17 +261,16 @@ export class WavRecorder {
       clearInterval(this.progressInterval);
       this.progressInterval = null;
     }
-    
+
     if (this.maxDurationTimeout) {
       clearTimeout(this.maxDurationTimeout);
       this.maxDurationTimeout = null;
     }
-    
-    if (this.stream) {
-      this.stream.getTracks().forEach(track => track.stop());
-      this.stream = null;
-    }
-    
+
+    // ストリームは破棄しない（キャッシュして再利用するため）
+    // スマホで毎回マイク許可を求められる問題を解決
+    this.stream = null;
+
     this.mediaRecorder = null;
     this.chunks = [];
   }
