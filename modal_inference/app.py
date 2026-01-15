@@ -44,7 +44,7 @@ def upload_model_weights():
 # Web エンドポイント
 @app.function(
     image=image,
-    cpu=2,  # CPU only (cheaper)
+    gpu="T4",
     memory=4096,
     timeout=120,
     scaledown_window=300,
@@ -163,7 +163,7 @@ def analyze_emotion(request: dict) -> dict:
 # セグメント一括分析エンドポイント
 @app.function(
     image=image,
-    cpu=2,
+    gpu="T4",
     memory=4096,
     timeout=300,  # 5分（複数セグメント処理のため長めに）
     scaledown_window=300,
