@@ -348,6 +348,92 @@ def analyze_emotion_segments(request: dict) -> dict:
         return {"error": str(e)}
 
 
+# ウォームアップエンドポイント（コールドスタート防止用）
+@app.function(
+    image=image,
+    gpu="T4",
+    memory=4096,
+    timeout=60,
+    scaledown_window=300,
+    volumes={MODEL_DIR: volume},
+)
+@modal.fastapi_endpoint(method="POST")
+def warmup() -> dict:
+    """
+    ウォームアップエンドポイント（コールドスタート防止用）
+    モデルをロードしてGPUをウォーム状態に保つ
+
+    Returns:
+        {"status": "warm", "gpu_available": bool, "model_loaded": bool}
+    """
+    import os
+    import torch
+    from transformers import Wav2Vec2Processor, Wav2Vec2Model, Wav2Vec2Config
+
+    # CustomWav2Vec2Modelを直接定義
+    class CustomWav2Vec2Model(Wav2Vec2Model):
+        config_class = Wav2Vec2Config
+
+        def __init__(self, config):
+            super().__init__(config)
+            self.fc = torch.nn.Linear(1024, 3)
+            self.init_weights()
+
+        def forward(self, input_values):
+            output = super().forward(input_values)
+            x = torch.mean(output.last_hidden_state, dim=1)
+            x = self.fc(x)
+            return x.squeeze()
+
+    try:
+        # デバイス設定
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        gpu_available = torch.cuda.is_available()
+        print(f"[Warmup] Using device: {device}")
+
+        # モデルロード
+        BASE_MODEL = "audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim"
+        MODEL_FILE = f"{MODEL_DIR}/model_20230425_MSPPodcast.pkl"
+
+        print("[Warmup] Loading processor...")
+        processor = Wav2Vec2Processor.from_pretrained(BASE_MODEL)
+
+        print("[Warmup] Loading model...")
+        model = CustomWav2Vec2Model.from_pretrained(BASE_MODEL)
+
+        # カスタム重みをロード
+        model_loaded = False
+        if os.path.exists(MODEL_FILE):
+            print(f"[Warmup] Loading custom weights from {MODEL_FILE}...")
+            state_dict = torch.load(MODEL_FILE, map_location=device)
+            model.load_state_dict(state_dict)
+            model_loaded = True
+            print("[Warmup] Custom weights loaded!")
+        else:
+            print(f"[Warmup] Custom weights not found, using base model")
+
+        model = model.to(device)
+        model.eval()
+
+        print("[Warmup] Model ready and warm!")
+
+        return {
+            "status": "warm",
+            "gpu_available": gpu_available,
+            "model_loaded": model_loaded,
+            "device": str(device)
+        }
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"[Warmup] Error: {e}")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
+
 # モデル重みアップロード用のローカル関数
 @app.local_entrypoint()
 def main():

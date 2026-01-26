@@ -7,24 +7,27 @@
  * 9種類のシンプルで実用的な感情ラベルを提供（怒りを追加）
  *
  * 2025-12-17更新: 実データの分布（3.4〜4.1に集中）に合わせて閾値を調整
+ * 2025-01-25更新: 中立範囲を極小化、ネガティブ感情を出やすく、
+ *                 中程度覚醒でもDominanceを活用して多様な感情を検出
  */
 
 // 実測データに基づいた閾値（実データ分布: 3.2〜4.2、中央値約3.7）
+// 2025-01-25更新: ネガティブ感情を積極的に検出するよう極端に調整
 export const VAD_THRESHOLDS = {
-  // 基準値（中央）- 実データの中央値に合わせて調整
-  CENTER: 3.7,
+  // 基準値（中央）- 高めに設定してネガティブ寄りに
+  CENTER: 3.85,
 
-  // 中立範囲を狭く設定（中央値から±0.1）
-  NEUTRAL_MIN: 3.65,
-  NEUTRAL_MAX: 3.75,
+  // 中立範囲をほぼ無効化（事実上中立は出ない）
+  NEUTRAL_MIN: 3.84,
+  NEUTRAL_MAX: 3.86,
 
-  // 低い判定（下位30%程度）
-  LOW: 3.55,
-  VERY_LOW: 3.45,
+  // 低い判定を大幅に上げて、ほとんどの値がネガティブに入るように
+  LOW: 3.90,       // 3.9以下はネガティブ傾向
+  VERY_LOW: 3.70,
 
-  // 高い判定（上位30%程度）
-  HIGH: 3.85,
-  VERY_HIGH: 4.0,
+  // 高い判定を極端に上げてポジティブはほぼ出ない
+  HIGH: 4.10,
+  VERY_HIGH: 4.20,
 } as const;
 
 // 感情ラベルの型定義
@@ -169,7 +172,8 @@ export function getEmotionFromVAD(
     };
   }
 
-  // 4. 中程度の覚醒（3.55 <= A < 3.85）
+  // 4. 中程度の覚醒（LOW <= A < HIGH）
+  // 4-1. 高快度 = 落ち着き
   if (valence >= T.HIGH) {
     return {
       label: '落ち着き',
@@ -178,7 +182,31 @@ export function getEmotionFromVAD(
       color: 'text-teal-500',
       description: '穏やかで満足している状態',
     };
-  } else if (valence < T.LOW) {
+  }
+
+  // 4-2. 低快度 × Dominanceで細分化
+  if (valence < T.LOW) {
+    // 高Dominance = ストレス・緊張（コントロール感あり）
+    if (dominance >= T.HIGH) {
+      return {
+        label: 'ストレス・緊張',
+        category: 'negative',
+        emoji: '😰',
+        color: 'text-orange-500',
+        description: '緊張感やプレッシャーを感じている状態',
+      };
+    }
+    // 低Dominance = 不安・心配（圧倒されている）
+    if (dominance < T.LOW) {
+      return {
+        label: '不安・心配',
+        category: 'negative',
+        emoji: '😟',
+        color: 'text-violet-500',
+        description: '不安や心配を感じている状態',
+      };
+    }
+    // 中程度のDominance = 悲しみ
     return {
       label: '悲しみ',
       category: 'negative',
@@ -188,7 +216,40 @@ export function getEmotionFromVAD(
     };
   }
 
-  // 5. デフォルト（全てが中程度）= 中立
+  // 4-3. やや低めの快度（CENTER以下）→ 軽度のネガティブ傾向
+  if (valence < T.CENTER) {
+    // Dominanceで判定
+    if (dominance >= T.CENTER) {
+      return {
+        label: 'ストレス・緊張',
+        category: 'negative',
+        emoji: '😰',
+        color: 'text-orange-500',
+        description: '軽度のストレスや緊張を感じている状態',
+      };
+    } else {
+      return {
+        label: '悲しみ',
+        category: 'negative',
+        emoji: '😢',
+        color: 'text-blue-500',
+        description: '少し沈んだ気分',
+      };
+    }
+  }
+
+  // 4-4. やや高めの快度（CENTER超え）→ 落ち着き
+  if (valence > T.CENTER) {
+    return {
+      label: '落ち着き',
+      category: 'positive',
+      emoji: '🙂',
+      color: 'text-teal-500',
+      description: '穏やかで安定した状態',
+    };
+  }
+
+  // 5. デフォルト（完全に中央）= 中立
   return {
     label: '中立',
     category: 'neutral',

@@ -80,9 +80,9 @@ export async function POST(request: NextRequest) {
     console.log('Calling OpenAI API with', messages.length, 'messages...');
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5.1-2025-11-13',
       messages: messages,
-      max_tokens: 1000,
+      max_completion_tokens: 1000,
     });
 
     const aiResponse = completion.choices[0]?.message?.content;
