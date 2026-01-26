@@ -25,7 +25,7 @@ ${text}
 出力: 句読点を付けたテキストのみ`
       }],
       temperature: 0,
-      max_tokens: 2000,
+      max_completion_tokens: 2000,
     });
 
     return response.choices[0].message.content?.trim() || text;

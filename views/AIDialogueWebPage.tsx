@@ -796,56 +796,60 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit,
         )}
 
         {/* Voice Recording Panel (Desktop) */}
-        <div className="hidden md:flex flex-col w-96 py-8 pl-4 pr-8 h-full">
-          {/* Spacer to align with left column header (including tabs) */}
-          <div className="mb-8">
-            <div className="h-[10rem]"></div>
+        <div className="hidden md:flex flex-col w-80 py-8 pl-4 pr-8 h-full">
+          {/* Spacer to match left column header height */}
+          <div className="mb-8 invisible">
+            <h1 className="text-4xl mb-2 font-semibold">音声録音</h1>
+            <p className="text-lg">スペーサー</p>
+            <div className="mt-4 h-10"></div>
+            <p className="mt-2 text-xs">スペーサー</p>
           </div>
-          <div className="flex flex-col items-center p-8 rounded-[20px] bg-white/85 shadow-[0_2px_8px_rgba(193,123,104,0.12),0_1px_3px_rgba(107,95,88,0.06)]">
-            <h2 className="text-2xl mb-8 font-semibold text-[#3D3632]">音声録音</h2>
+
+          <div className="flex flex-col grow shrink items-center p-6 rounded-[20px] bg-white/85 shadow-[0_2px_8px_rgba(193,123,104,0.12),0_1px_3px_rgba(107,95,88,0.06)]">
+            <h2 className="text-xl mb-4 font-semibold text-[#3D3632]">音声録音</h2>
 
             {/* Recording Button */}
-            <div className="mb-8">
+            <div className="mb-4">
               {!isRecording ? (
                 <button
                   onClick={startRecording}
                   disabled={isProcessing || recordingLimit.remaining <= 0}
-                  className="flex justify-center items-center w-32 h-32 rounded-full bg-[#C17B68] shadow-[0_4px_16px_rgba(193,123,104,0.3)] hover:shadow-[0_8px_24px_rgba(193,123,104,0.4)] transition-shadow disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex justify-center items-center w-24 h-24 rounded-full bg-[#C17B68] shadow-[0_4px_16px_rgba(193,123,104,0.3)] hover:shadow-[0_8px_24px_rgba(193,123,104,0.4)] transition-shadow disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isProcessing ? (
-                    <Loader2 className="text-4xl text-white/85 animate-spin" size={48} />
+                    <Loader2 className="text-4xl text-white/85 animate-spin" size={36} />
                   ) : (
-                    <Mic className="text-4xl text-white/85" size={48} />
+                    <Mic className="text-4xl text-white/85" size={36} />
                   )}
                 </button>
               ) : (
                 <button
                   onClick={stopRecording}
-                  className="flex justify-center items-center w-32 h-32 rounded-full bg-red-500 shadow-[0_4px_16px_rgba(239,68,68,0.3)] hover:shadow-[0_8px_24px_rgba(239,68,68,0.4)] transition-shadow animate-pulse"
+                  className="flex justify-center items-center w-24 h-24 rounded-full bg-red-500 shadow-[0_4px_16px_rgba(239,68,68,0.3)] hover:shadow-[0_8px_24px_rgba(239,68,68,0.4)] transition-shadow animate-pulse"
                 >
-                  <Square className="text-4xl text-white/85" size={48} />
+                  <Square className="text-4xl text-white/85" size={36} />
                 </button>
               )}
             </div>
 
             {/* Timer */}
-            <div className="mb-8">
-              <div className="text-3xl text-center font-semibold text-[#C17B68]">
+            <div className="mb-4">
+              <div className="text-2xl text-center font-semibold text-[#C17B68]">
                 {isRecording || isStarting ? formattedDuration : '00:00'}
               </div>
-              <div className="text-base text-center mt-1 text-[#6B5F58]">
+              <div className="text-sm text-center mt-1 text-[#6B5F58]">
                 {isRecording ? '録音中...' : isProcessing ? '処理中...' : '録音時間'}
               </div>
             </div>
 
             {/* Waveform Visualization */}
-            <div className="mb-8 w-full">
+            <div className="mb-4 w-full">
               {(isRecording || isStarting) ? (
-                <div className="h-16 rounded-xl bg-[#C17B68]/10 overflow-hidden">
-                  <canvas ref={canvasRef} width={300} height={64} className="w-full h-full" />
+                <div className="h-12 rounded-xl bg-[#C17B68]/10 overflow-hidden">
+                  <canvas ref={canvasRef} width={300} height={48} className="w-full h-full" />
                 </div>
               ) : (
-                <div className="flex justify-center items-center gap-1 h-16">
+                <div className="flex justify-center items-center gap-1 h-6">
                   <div className="w-1 h-2 rounded-full bg-[#C17B68]"></div>
                   <div className="w-1 h-2 rounded-full bg-[#C17B68]"></div>
                   <div className="w-1 h-2 rounded-full bg-[#C17B68]"></div>
@@ -856,13 +860,13 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit,
             </div>
 
             {/* Recording Count */}
-            <div className="text-center w-full p-4 rounded-[12px] bg-[#A8B89F]/10">
-              <div className="text-lg font-semibold text-[#3D3632]">残り録音回数</div>
-              <div className="flex justify-center items-center gap-2 mt-2">
-                <span className="text-2xl font-semibold text-[#C17B68]">{recordingLimit.remaining}</span>
-                <span className="text-lg text-[#6B5F58]">/ {recordingLimit.total}回</span>
+            <div className="text-center w-full p-3 rounded-[12px] bg-[#A8B89F]/10">
+              <div className="text-base font-semibold text-[#3D3632]">残り録音回数</div>
+              <div className="flex justify-center items-center gap-2 mt-1">
+                <span className="text-xl font-semibold text-[#C17B68]">{recordingLimit.remaining}</span>
+                <span className="text-base text-[#6B5F58]">/ {recordingLimit.total}回</span>
               </div>
-              <div className="mt-3">
+              <div className="mt-2">
                 <div className="h-2 rounded-full bg-[#A8B89F]/20">
                   <div
                     className="h-full rounded-full bg-[#A8B89F]"
@@ -873,19 +877,17 @@ export function AIDialogueWebPage({ user, recordingLimit: initialRecordingLimit,
             </div>
 
             {error && (
-              <div className="mt-4 text-sm text-red-500 text-center">{error}</div>
+              <div className="mt-3 text-sm text-red-500 text-center">{error}</div>
             )}
-          </div>
 
-          {/* Generate Diary Button */}
-          <div className="mt-2">
+            {/* Generate Diary Button */}
             <button
               onClick={generateSummaryAndRedirect}
               disabled={isGeneratingSummary || messages.filter(m => m.role === 'user').length < 2}
-              className="flex justify-center items-center gap-3 w-full py-4 px-6 rounded-full bg-[#4A7C59] text-white shadow-[0_2px_8px_rgba(74,124,89,0.3)] hover:bg-[#3D6B4A] hover:shadow-[0_4px_12px_rgba(74,124,89,0.4)] transition-all disabled:bg-[#D4DED0] disabled:text-white/60 disabled:cursor-not-allowed disabled:shadow-none"
+              className="mt-auto pt-4 flex justify-center items-center gap-2 w-full py-3 px-4 rounded-full bg-[#4A7C59] text-white shadow-[0_2px_8px_rgba(74,124,89,0.3)] hover:bg-[#3D6B4A] hover:shadow-[0_4px_12px_rgba(74,124,89,0.4)] transition-all disabled:bg-[#D4DED0] disabled:text-white/60 disabled:cursor-not-allowed disabled:shadow-none"
             >
-              <FileText className="text-lg" size={18} />
-              <span className="text-lg whitespace-nowrap font-semibold">
+              <FileText size={16} />
+              <span className="text-base whitespace-nowrap font-semibold">
                 {isGeneratingSummary ? '生成中...' : '日記を生成'}
               </span>
             </button>

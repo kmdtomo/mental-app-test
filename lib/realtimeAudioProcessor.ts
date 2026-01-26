@@ -22,6 +22,14 @@ export class RealtimeAudioProcessor {
     async start() {
         console.log('RealtimeAudioProcessor: start() called');
         try {
+            // 0. AudioContextを即座に作成 (ユーザー操作の直後に行う必要があるため)
+            // これにより、ブラウザの自動再生ポリシーによるブロックを防ぐ
+            this.audioContext = new AudioContext({ sampleRate: 16000 });
+
+            if (this.audioContext.state === 'suspended') {
+                await this.audioContext.resume();
+            }
+
             // 1. マイク許可の取得
             console.log('Requesting microphone access...');
             this.mediaStream = await navigator.mediaDevices.getUserMedia({
@@ -40,6 +48,7 @@ export class RealtimeAudioProcessor {
             console.log('Connected to OpenAI');
 
             // 3. AudioWorkletのセットアップ (Lambdaへの感情分析用)
+            // 既に作成したAudioContextを使用
             console.log('Setting up AudioWorklet...');
             await this.setupAudioWorklet();
             console.log('AudioWorklet setup complete');
@@ -126,7 +135,22 @@ export class RealtimeAudioProcessor {
         this.dataChannel = dc;
 
         dc.onmessage = (e) => this.handleOpenAIMessage(e);
-        dc.onopen = () => console.log("Data channel opened");
+        dc.onopen = () => {
+            console.log("Data channel opened");
+            // VAD設定（話し終わり判定）を調整してレスポンスを高速化
+            const sessionUpdate = {
+                type: "session.update",
+                session: {
+                    turn_detection: {
+                        type: "server_vad",
+                        threshold: 0.5,
+                        prefix_padding_ms: 300,
+                        silence_duration_ms: 400 // デフォルトより短くして反応を早める (例: 400ms)
+                    }
+                }
+            };
+            dc.send(JSON.stringify(sessionUpdate));
+        };
 
         // オファー生成と送信
         const offer = await pc.createOffer();
@@ -146,6 +170,15 @@ export class RealtimeAudioProcessor {
 
         const answerSdp = await sdpResponse.text();
         await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+
+        // 接続状態の監視
+        pc.oniceconnectionstatechange = () => {
+            console.log(`ICE Connection State changed: ${pc.iceConnectionState}`);
+            if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+                this.onError('Audio connection lost. Please try again.');
+                this.stop();
+            }
+        };
     }
 
     private handleOpenAIMessage(event: MessageEvent) {
@@ -167,9 +200,10 @@ export class RealtimeAudioProcessor {
     }
 
     private async setupAudioWorklet() {
-        if (!this.mediaStream) return;
+        if (!this.mediaStream || !this.audioContext) return;
 
-        this.audioContext = new AudioContext({ sampleRate: 16000 }); // Lambda用に16kHzで処理
+        // 既存のAudioContextを使用 (start()で初期化済み)
+        // this.audioContext = new AudioContext({ sampleRate: 16000 }); 
         const source = this.audioContext.createMediaStreamSource(this.mediaStream);
 
         await this.audioContext.audioWorklet.addModule('/audio-processor-worklet.js');

@@ -91,13 +91,13 @@ export async function POST(request: NextRequest) {
 
       conversationForDiary = turnsForDiary
         .map(turn => `${turn.role === 'user' ? 'ユーザー' : 'AI'}: ${turn.content}`)
-        .join('\n\n');
+        .join('\\n\\n');
     }
 
     // AIインサイト生成用の全会話（最後のAI応答も含む）
     const fullConversation = dialogueTurns
       ?.map(turn => `${turn.role === 'user' ? 'ユーザー' : 'AI'}: ${turn.content}`)
-      .join('\n\n') || '';
+      .join('\\n\\n') || '';
 
     const emotionCounts: Record<string, number> = {};
     const allEmotionLabels: string[] = [];
@@ -151,7 +151,7 @@ export async function POST(request: NextRequest) {
     const userOnlyContent = dialogueTurns
       ?.filter(turn => turn.role === 'user')
       .map(turn => turn.content)
-      .join('\n\n') || transcriptionText;
+      .join('\\n\\n') || transcriptionText;
 
     const summaryPrompt = `以下の発言内容から、その人が書いた日記を作成してください。
 
@@ -180,9 +180,9 @@ ${userOnlyContent}
 
     // 日記要約は両群とも生成
     const summaryResponse = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5.1-2025-11-13',
       messages: [{ role: 'user', content: summaryPrompt }],
-      max_tokens: 1000,
+      max_completion_tokens: 1000,
     });
 
     const diarySummary = summaryResponse.choices[0]?.message?.content || '';
@@ -209,9 +209,9 @@ ${fullConversation || transcriptionText}
 - 共感的で温かい口調（説教・アドバイスは禁止）`;
 
       const insightResponse = await openai.chat.completions.create({
-        model: 'gpt-4o',
+        model: 'gpt-5.1-2025-11-13',
         messages: [{ role: 'user', content: insightPrompt }],
-        max_tokens: 1000,
+        max_completion_tokens: 1000,
       });
 
       aiInsights = insightResponse.choices[0]?.message?.content || '';
